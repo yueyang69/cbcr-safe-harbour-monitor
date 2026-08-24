@@ -1,0 +1,83 @@
+export type UserRole = 'subsidiary' | 'hq' | 'reviewer'
+export type ResultStatus = 'PASS' | 'FAIL' | 'WARNING' | 'INCOMPLETE'
+export type NumericValue = string | number | null
+
+export interface TestResult {
+  result: ResultStatus
+  explanation: string
+  value?: NumericValue
+  threshold?: NumericValue
+  payroll_rate?: NumericValue
+  asset_rate?: NumericValue
+}
+
+export interface Evaluation {
+  tests: {
+    de_minimis: TestResult
+    simplified_etr: TestResult
+    routine_profits: TestResult
+  }
+  final_result: ResultStatus
+  warning: string | null
+}
+
+export interface DashboardJurisdiction {
+  id: string
+  jurisdiction: string
+  revenue: NumericValue
+  pbt: NumericValue
+  evaluation: Evaluation | null
+  status: ResultStatus
+  warnings: string[]
+}
+
+export interface DashboardData {
+  fiscal_year: number | null
+  kpis: {
+    jurisdiction_count: number
+    pass_count: number
+    warning_count: number
+    incomplete_count: number
+  }
+  jurisdictions: DashboardJurisdiction[]
+}
+
+export interface JurisdictionSummary extends DashboardJurisdiction {
+  fiscal_year: number
+  covered_taxes: NumericValue
+  payroll: NumericValue
+  tangible_assets: NumericValue
+  company_count: number
+  included_count: number
+}
+
+export interface MappingSuggestion {
+  source_field: string
+  target_field: string
+  confidence: string | number
+}
+
+export interface Company {
+  id: string
+  name: string
+  country: string | null
+}
+
+export interface FinancialDataInput {
+  company_id: string
+  fiscal_year: number
+  jurisdiction: string
+  currency: string
+  revenue: number | null
+  pbt: number | null
+  covered_taxes: number | null
+  payroll: number | null
+  tangible_assets: number | null
+}
+
+export interface FinancialData extends FinancialDataInput {
+  id: string
+  is_submitted: boolean
+  is_approved: boolean
+  requires_manual_confirmation: boolean
+}

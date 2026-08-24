@@ -1,0 +1,66 @@
+from decimal import Decimal
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class CompanyCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    country: str | None = Field(default=None, max_length=100)
+
+
+class CompanyRead(CompanyCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+
+
+class FinancialDataCreate(BaseModel):
+    company_id: str
+    fiscal_year: int = Field(ge=2020, le=2100)
+    jurisdiction: str = Field(min_length=1, max_length=100)
+    currency: str = Field(default="EUR", min_length=3, max_length=3)
+    revenue: Decimal | None = None
+    pbt: Decimal | None = None
+    covered_taxes: Decimal | None = None
+    payroll: Decimal | None = None
+    tangible_assets: Decimal | None = None
+
+    @field_validator("currency")
+    @classmethod
+    def uppercase_currency(cls, value: str) -> str:
+        return value.upper()
+
+
+class FinancialDataRead(FinancialDataCreate):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    is_submitted: bool
+    is_approved: bool
+    requires_manual_confirmation: bool
+
+
+class MappingSuggestion(BaseModel):
+    source_field: str
+    target_field: str
+    confidence: Decimal = Field(ge=0, le=1)
+
+
+class MappingSuggestRequest(BaseModel):
+    source_fields: list[str] = Field(min_length=1)
+
+
+class MappingConfirmRequest(BaseModel):
+    mappings: list[MappingSuggestion] = Field(min_length=1)
+
+
+class TestResultRead(BaseModel):
+    result: str
+    explanation: str
+    value: Decimal | None = None
+    threshold: Decimal | None = None
+    payroll_rate: Decimal | None = None
+    asset_rate: Decimal | None = None
+
+
+class EvaluationRead(BaseModel):
+    tests: dict[str, TestResultRead]
+    final_result: str
+    warning: str | None

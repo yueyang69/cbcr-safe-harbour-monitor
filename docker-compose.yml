@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cbcr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cbcr_dev_only}
+      POSTGRES_DB: ${POSTGRES_DB:-cbcr}
+    ports:
+      - "5432:5432"
+    volumes:
+      - cbcr_pgdata:/var/lib/postgresql/data
+  api:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://cbcr:cbcr_dev_only@db:5432/cbcr
+      CORS_ORIGINS: http://localhost:5173
+    depends_on:
+      - db
+    ports:
+      - "8000:8000"
+  web:
+    build: ./frontend
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000/api/v1
+    depends_on:
+      - api
+    ports:
+      - "5173:5173"
+volumes:
+  cbcr_pgdata:

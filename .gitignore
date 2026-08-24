@@ -1,0 +1,41 @@
+# Local tools and settings
+.claude/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+coverage/
+
+# Editor and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local databases and logs
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Project reference materials (not part of the public source release)
+/*.docx
+/*.xlsx
+/*.pdf
+
+# Accidental lockfile generated outside the frontend package
+/package-lock.json

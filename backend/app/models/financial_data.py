@@ -1,0 +1,24 @@
+from decimal import Decimal
+from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from .base import Base, Timestamped, UUIDPrimaryKey
+
+
+class FinancialData(UUIDPrimaryKey, Timestamped, Base):
+    __tablename__ = "financial_data"
+    __table_args__ = (UniqueConstraint("company_id", "fiscal_year", name="uq_financial_company_year"),)
+
+    company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    jurisdiction: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="EUR")
+    revenue: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    pbt: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    covered_taxes: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    payroll: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    tangible_assets: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    is_submitted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    requires_manual_confirmation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    company: Mapped["Company"] = relationship(back_populates="financial_data")
