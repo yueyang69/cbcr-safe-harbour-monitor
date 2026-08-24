@@ -13,7 +13,7 @@ services:
     build: ./backend
     environment:
       DATABASE_URL: postgresql+asyncpg://cbcr:cbcr_dev_only@db:5432/cbcr
-      CORS_ORIGINS: http://localhost:5173
+      CORS_ORIGINS: http://localhost:5173,http://47.253.231.221:5173
     depends_on:
       - db
     ports:
@@ -21,7 +21,7 @@ services:
   web:
     build: ./frontend
     environment:
-      VITE_API_BASE_URL: http://localhost:8000/api/v1
+      VITE_API_BASE_URL: http://47.253.231.221:8000/api/v1
     depends_on:
       - api
     ports:
