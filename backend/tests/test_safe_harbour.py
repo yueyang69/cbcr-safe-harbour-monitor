@@ -38,19 +38,20 @@ def test_etr_below_threshold_fails_and_zero_pbt_is_incomplete():
     assert simplified_etr(D("0"), D("0"), 2025).result == "INCOMPLETE"
 
 
-def test_annual_carve_out_rates():
-    assert carve_out_rates(2024) == (D("0.098"), D("0.078"))
-    assert carve_out_rates(2027) == (D("0.092"), D("0.072"))
-    assert carve_out_rates(2028) == (D("0.090"), D("0.070"))
+def test_carve_out_rates_constant_simplification():
+    # 简化假设：不分年度，统一 10%/8%（参见 claude.md）
+    assert carve_out_rates(2024) == (D("0.10"), D("0.08"))
+    assert carve_out_rates(2025) == (D("0.10"), D("0.08"))
+    assert carve_out_rates(2028) == (D("0.10"), D("0.08"))
 
 
-def test_routine_profits_uses_annual_rates_and_boundary_passes():
-    result = routine_profits(D("1000"), D("1000"), D("176"), 2024)
+def test_routine_profits_uses_constant_rates_and_boundary_passes():
+    result = routine_profits(D("1000"), D("1000"), D("180"), 2024)
     assert result.result == "PASS"
-    assert result.value == D("176.0")
-    assert result.payroll_rate == D("0.098")
-    assert result.asset_rate == D("0.078")
-    assert routine_profits(D("1000"), D("1000"), D("176.01"), 2024).result == "FAIL"
+    assert result.value == D("180.0")
+    assert result.payroll_rate == D("0.10")
+    assert result.asset_rate == D("0.08")
+    assert routine_profits(D("1000"), D("1000"), D("180.01"), 2024).result == "FAIL"
 
 
 def test_all_fail_stops_at_warning_without_tax_calculation():

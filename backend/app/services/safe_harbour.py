@@ -9,13 +9,8 @@ D = Decimal
 
 ETR_THRESHOLDS = {2024: D("0.15"), 2025: D("0.16")}
 DEFAULT_ETR_THRESHOLD = D("0.17")
-CARVE_OUT_RATES = {
-    2024: (D("0.098"), D("0.078")),
-    2025: (D("0.096"), D("0.076")),
-    2026: (D("0.094"), D("0.074")),
-    2027: (D("0.092"), D("0.072")),
-}
-DEFAULT_CARVE_OUT_RATES = (D("0.090"), D("0.070"))
+# 简化假设（见 claude.md，可在配置中调整）：统一 Payroll×10% + Tangible Assets×8%，不分年度递减
+CARVE_OUT_RATES = (D("0.10"), D("0.08"))
 
 @dataclass(frozen=True)
 class TestResult:
@@ -32,7 +27,8 @@ def etr_threshold(fiscal_year: int) -> Decimal:
 
 
 def carve_out_rates(fiscal_year: int) -> tuple[Decimal, Decimal]:
-    return CARVE_OUT_RATES.get(fiscal_year, DEFAULT_CARVE_OUT_RATES)
+    """简化假设：不分年度，统一返回 10%/8%（参见 claude.md，可在配置中调整）。"""
+    return CARVE_OUT_RATES
 
 
 def de_minimis(revenue: Optional[Decimal], pbt: Optional[Decimal]) -> TestResult:
