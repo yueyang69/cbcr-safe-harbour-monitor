@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from .api import companies, dashboard, financial_data, health, mappings, summaries
+from .api import ai, companies, dashboard, financial_data, health, mappings, summaries
 from .config import get_settings
 
 app = FastAPI(title="Transitional CbCR Safe Harbour Risk Warning API", version="0.1.0")
@@ -18,3 +18,4 @@ app.include_router(financial_data.router, prefix="/api/v1")
 app.include_router(mappings.router, prefix="/api/v1")
 app.include_router(summaries.router, prefix="/api/v1")
 app.include_router(dashboard.router, prefix="/api/v1")
+app.include_router(ai.router, prefix="/api/v1")

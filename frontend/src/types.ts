@@ -80,4 +80,39 @@ export interface FinancialData extends FinancialDataInput {
   is_submitted: boolean
   is_approved: boolean
   requires_manual_confirmation: boolean
+  ai_anomaly_flags?: AnomalyFlag[] | null
+  missing_suggestion?: Record<string, unknown> | null
+}
+
+// AI Service Types
+export interface AnomalyFlag {
+  type: 'ratio_anomaly' | 'volatility_anomaly' | 'missing_critical'
+  field: string
+  message: string
+  severity: 'warning' | 'error'
+}
+
+export interface AnomalyDetectionResponse {
+  anomalies: AnomalyFlag[]
+}
+
+export interface SuggestMissingResponse {
+  field_name: string
+  suggested_value: number | null
+  confidence: number
+  explanation: string
+}
+
+export interface BriefingResponse {
+  briefing: string
+  generated_at: string
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export interface ChatResponse {
+  reply: string
 }

@@ -1,5 +1,6 @@
 from decimal import Decimal
 from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, Timestamped, UUIDPrimaryKey
 
@@ -20,5 +21,7 @@ class FinancialData(UUIDPrimaryKey, Timestamped, Base):
     is_submitted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     requires_manual_confirmation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    ai_anomaly_flags: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    missing_suggestion: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     company: Mapped["Company"] = relationship(back_populates="financial_data")

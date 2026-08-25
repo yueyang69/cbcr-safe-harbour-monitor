@@ -1,4 +1,4 @@
-from sqlalchemy import String, UniqueConstraint
+from sqlalchemy import Boolean, Float, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from .base import Base, Timestamped, UUIDPrimaryKey
 
@@ -10,3 +10,5 @@ class MappingRule(UUIDPrimaryKey, Timestamped, Base):
     source_field: Mapped[str] = mapped_column(String(200), nullable=False)
     target_field: Mapped[str] = mapped_column(String(100), nullable=False)
     confirmed_by: Mapped[str] = mapped_column(String(100), nullable=False, default="hq")
+    confidence_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    confirmed_by_user: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

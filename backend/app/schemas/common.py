@@ -35,6 +35,8 @@ class FinancialDataRead(FinancialDataCreate):
     is_submitted: bool
     is_approved: bool
     requires_manual_confirmation: bool
+    ai_anomaly_flags: dict | None = None
+    missing_suggestion: dict | None = None
 
 
 class MappingSuggestion(BaseModel):
@@ -64,3 +66,52 @@ class EvaluationRead(BaseModel):
     tests: dict[str, TestResultRead]
     final_result: str
     warning: str | None
+
+
+# AI Service Schemas
+class AnomalyDetectionRequest(BaseModel):
+    company_id: str
+    fiscal_year: int
+    jurisdiction: str
+    revenue: Decimal | None = None
+    pbt: Decimal | None = None
+    covered_taxes: Decimal | None = None
+    payroll: Decimal | None = None
+    tangible_assets: Decimal | None = None
+
+
+class AnomalyFlag(BaseModel):
+    type: str  # "ratio_anomaly", "volatility_anomaly", "missing_critical"
+    field: str
+    message: str
+    severity: str  # "warning", "error"
+
+
+class AnomalyDetectionResponse(BaseModel):
+    anomalies: list[AnomalyFlag]
+
+
+class SuggestMissingRequest(BaseModel):
+    company_id: str
+    field_name: str
+
+
+class SuggestMissingResponse(BaseModel):
+    field_name: str
+    suggested_value: Decimal | None
+    confidence: float
+    explanation: str
+
+
+class BriefingResponse(BaseModel):
+    briefing: str
+    generated_at: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    jurisdiction: str | None = None
+
+
+class ChatResponse(BaseModel):
+    reply: str
