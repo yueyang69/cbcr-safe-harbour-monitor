@@ -119,3 +119,45 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+
+
+# Stage 3 — CSV batch upload schemas
+class ColumnMappingInfo(BaseModel):
+    csv_name: str
+    mapped_field: str | None
+    confidence: float = Field(ge=0, le=1)
+    sample_values: list[str] = []
+
+
+class BatchUploadResponse(BaseModel):
+    columns: list[ColumnMappingInfo]
+    preview_data: list[dict]
+    rows: list[dict] = Field(default_factory=list)
+    total_rows: int
+    fiscal_year: int
+
+
+class BatchRowInput(BaseModel):
+    jurisdiction: str = Field(min_length=1, max_length=100)
+    currency: str = Field(default="EUR", min_length=3, max_length=3)
+    revenue: Decimal | None = None
+    pbt: Decimal | None = None
+    covered_taxes: Decimal | None = None
+    payroll: Decimal | None = None
+    tangible_assets: Decimal | None = None
+
+    @field_validator("currency")
+    @classmethod
+    def uppercase_currency(cls, value: str) -> str:
+        return value.upper()
+
+
+class BatchCommitRequest(BaseModel):
+    company_id: str
+    fiscal_year: int = Field(ge=2020, le=2100)
+    rows: list[BatchRowInput] = Field(min_length=1)
+
+
+class BatchCommitResponse(BaseModel):
+    success_count: int
+    failed_rows: list[dict]

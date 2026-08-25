@@ -30,6 +30,7 @@ export function AppLayout() {
       <nav className="nav-list">
         {!isSubsidiary && <NavLink to="/dashboard" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}><span aria-hidden="true">▦</span>Dashboard</NavLink>}
         <NavLink to="/data-entry" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}><span aria-hidden="true">＋</span>Data entry</NavLink>
+        {role !== 'reviewer' && <NavLink to="/csv-upload" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}><span aria-hidden="true">⇪</span>CSV upload</NavLink>}
         {(role === 'hq' || role === 'admin') && <NavLink to="/approvals" className={({ isActive }) => isActive ? 'nav-link active' : 'nav-link'}><span aria-hidden="true">✓</span>Approvals</NavLink>}
       </nav>
       <div className="sidebar-footer"><span className="secure-dot" />API connected<div className="sidebar-caption">Transitional Safe Harbour<br />MVP workspace</div></div>

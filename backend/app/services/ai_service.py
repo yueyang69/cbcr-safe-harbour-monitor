@@ -38,6 +38,67 @@ MINIMAX_API_BASE = os.getenv("MINIMAX_API_BASE", "https://api.minimaxi.com/v1")
 D = Decimal
 
 
+# Enhanced hardcoded dictionary with confidence scores for field mapping.
+# Module-level so the CSV column mapper (column_mapper.py) can reuse it.
+# Key = a known CSV header / alias; value = (standard field, confidence).
+ALIASES = {
+    # 精确匹配（高置信度）
+    "所在国家/地区": ("jurisdiction", 0.98),
+    "jurisdiction": ("jurisdiction", 1.0),
+    "辖区": ("jurisdiction", 0.95),
+    "国家": ("jurisdiction", 0.92),
+    "country": ("jurisdiction", 0.96),
+
+    "报告期": ("fiscal_year", 0.98),
+    "fiscal year": ("fiscal_year", 1.0),
+    "fiscal_year": ("fiscal_year", 1.0),
+    "会计年度": ("fiscal_year", 0.96),
+    "年度": ("fiscal_year", 0.90),
+    "year": ("fiscal_year", 0.88),
+
+    "本位币": ("currency", 0.97),
+    "currency": ("currency", 1.0),
+    "币种": ("currency", 0.94),
+    "货币": ("currency", 0.92),
+
+    "全年营业收入": ("revenue", 0.96),
+    "revenue": ("revenue", 1.0),
+    "cbcr revenue": ("revenue", 0.98),
+    "营业收入": ("revenue", 0.93),
+    "收入": ("revenue", 0.85),
+    "销售收入": ("revenue", 0.90),
+
+    "税前利润": ("pbt", 0.99),
+    "profit before tax": ("pbt", 1.0),
+    "pbt": ("pbt", 1.0),
+    "cbcr pbt": ("pbt", 0.98),
+    "利润总额": ("pbt", 0.94),
+    "利润": ("pbt", 0.82),
+
+    "已涵盖所得税": ("covered_taxes", 0.94),
+    "covered taxes": ("covered_taxes", 1.0),
+    "covered_taxes": ("covered_taxes", 1.0),
+    "simplified covered taxes": ("covered_taxes", 0.98),
+    "所得税": ("covered_taxes", 0.88),
+    "税费": ("covered_taxes", 0.80),
+
+    "合格员工薪酬": ("payroll", 0.93),
+    "eligible payroll": ("payroll", 1.0),
+    "eligible payroll costs": ("payroll", 1.0),
+    "payroll": ("payroll", 0.95),
+    "员工薪酬": ("payroll", 0.89),
+    "工资": ("payroll", 0.85),
+    "人工成本": ("payroll", 0.87),
+
+    "合格有形资产": ("tangible_assets", 0.96),
+    "eligible tangible assets": ("tangible_assets", 1.0),
+    "tangible assets": ("tangible_assets", 0.98),
+    "tangible_assets": ("tangible_assets", 1.0),
+    "有形资产": ("tangible_assets", 0.90),
+    "固定资产": ("tangible_assets", 0.83),
+}
+
+
 class AIServiceError(Exception):
     """Raised when AI service is unavailable or times out."""
 
@@ -131,61 +192,6 @@ class AIService:
         Returns Top 3 candidates with confidence scores.
         Fields with confidence < 60% force manual selection.
         """
-        # Enhanced hardcoded dictionary with confidence scores
-        ALIASES = {
-            # 精确匹配（高置信度）
-            "所在国家/地区": ("jurisdiction", 0.98),
-            "jurisdiction": ("jurisdiction", 1.0),
-            "辖区": ("jurisdiction", 0.95),
-            "国家": ("jurisdiction", 0.92),
-            "country": ("jurisdiction", 0.96),
-
-            "报告期": ("fiscal_year", 0.98),
-            "fiscal year": ("fiscal_year", 1.0),
-            "会计年度": ("fiscal_year", 0.96),
-            "年度": ("fiscal_year", 0.90),
-            "year": ("fiscal_year", 0.88),
-
-            "本位币": ("currency", 0.97),
-            "currency": ("currency", 1.0),
-            "币种": ("currency", 0.94),
-            "货币": ("currency", 0.92),
-
-            "全年营业收入": ("revenue", 0.96),
-            "revenue": ("revenue", 1.0),
-            "cbcr revenue": ("revenue", 0.98),
-            "营业收入": ("revenue", 0.93),
-            "收入": ("revenue", 0.85),
-            "销售收入": ("revenue", 0.90),
-
-            "税前利润": ("pbt", 0.99),
-            "profit before tax": ("pbt", 1.0),
-            "pbt": ("pbt", 1.0),
-            "cbcr pbt": ("pbt", 0.98),
-            "利润总额": ("pbt", 0.94),
-            "利润": ("pbt", 0.82),
-
-            "已涵盖所得税": ("covered_taxes", 0.94),
-            "covered taxes": ("covered_taxes", 1.0),
-            "simplified covered taxes": ("covered_taxes", 0.98),
-            "所得税": ("covered_taxes", 0.88),
-            "税费": ("covered_taxes", 0.80),
-
-            "合格员工薪酬": ("payroll", 0.93),
-            "eligible payroll": ("payroll", 1.0),
-            "eligible payroll costs": ("payroll", 1.0),
-            "payroll": ("payroll", 0.95),
-            "员工薪酬": ("payroll", 0.89),
-            "工资": ("payroll", 0.85),
-            "人工成本": ("payroll", 0.87),
-
-            "合格有形资产": ("tangible_assets", 0.96),
-            "eligible tangible assets": ("tangible_assets", 1.0),
-            "tangible assets": ("tangible_assets", 0.98),
-            "有形资产": ("tangible_assets", 0.90),
-            "固定资产": ("tangible_assets", 0.83),
-        }
-
         suggestions = []
         unknown_fields = []
 

@@ -11,7 +11,7 @@ JSONB_VARIANT = JSONB().with_variant(SQLiteJSON(), "sqlite")
 
 class FinancialData(UUIDPrimaryKey, Timestamped, Base):
     __tablename__ = "financial_data"
-    __table_args__ = (UniqueConstraint("company_id", "fiscal_year", name="uq_financial_company_year"),)
+    __table_args__ = (UniqueConstraint("company_id", "fiscal_year", "jurisdiction", name="uq_financial_company_year_jurisdiction"),)
 
     company_id: Mapped[str] = mapped_column(ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
     fiscal_year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)

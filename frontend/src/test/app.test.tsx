@@ -27,6 +27,8 @@ vi.mock('../api/endpoints', () => ({
   approveFinancialData: vi.fn().mockResolvedValue({}),
   returnFinancialData: vi.fn().mockResolvedValue({}),
   updateFinancialData: vi.fn().mockResolvedValue({}),
+  batchUploadCsv: vi.fn(),
+  batchCommitCsv: vi.fn(),
 }))
 
 afterEach(() => { cleanup(); localStorage.clear(); vi.mocked(listFinancialData).mockResolvedValue([]) })

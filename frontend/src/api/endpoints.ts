@@ -1,5 +1,8 @@
 import { api } from './client'
 import type {
+  BatchCommitResult,
+  BatchRowInput,
+  BatchUploadResult,
   Company,
   DashboardData,
   FinancialData,
@@ -114,5 +117,20 @@ export async function generateBriefing(fiscalYear?: number): Promise<BriefingRes
 
 export async function chatAssistant(message: string, jurisdiction?: string): Promise<ChatResponse> {
   const { data } = await api.post<ChatResponse>('/ai/chat', { message, jurisdiction })
+  return data
+}
+
+// Stage 3 — CSV batch upload
+export async function batchUploadCsv(file: File, companyId: string, fiscalYear: number): Promise<BatchUploadResult> {
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('company_id', companyId)
+  formData.append('fiscal_year', String(fiscalYear))
+  const { data } = await api.post<BatchUploadResult>('/financial-data/batch-upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+  return data
+}
+
+export async function batchCommitCsv(payload: { company_id: string; fiscal_year: number; rows: BatchRowInput[] }): Promise<BatchCommitResult> {
+  const { data } = await api.post<BatchCommitResult>('/financial-data/batch-commit', payload)
   return data
 }

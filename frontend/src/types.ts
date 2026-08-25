@@ -119,3 +119,34 @@ export interface ChatMessage {
 export interface ChatResponse {
   reply: string
 }
+
+// Stage 3 — CSV batch upload types
+export interface ColumnMappingInfo {
+  csv_name: string
+  mapped_field: string | null
+  confidence: number
+  sample_values: string[]
+}
+
+export interface BatchUploadResult {
+  columns: ColumnMappingInfo[]
+  preview_data: Record<string, string>[]
+  rows: Record<string, string>[]
+  total_rows: number
+  fiscal_year: number
+}
+
+export interface BatchRowInput {
+  jurisdiction: string
+  currency: string
+  revenue: number | null
+  pbt: number | null
+  covered_taxes: number | null
+  payroll: number | null
+  tangible_assets: number | null
+}
+
+export interface BatchCommitResult {
+  success_count: number
+  failed_rows: { row_index: number; error: string }[]
+}
