@@ -83,6 +83,7 @@ export interface FinancialData extends FinancialDataInput {
   is_submitted: boolean
   is_approved: boolean
   requires_manual_confirmation: boolean
+  return_reason?: string | null
   ai_anomaly_flags?: AnomalyFlag[] | null
   missing_suggestion?: Record<string, unknown> | null
 }

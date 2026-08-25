@@ -3,6 +3,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from ..jurisdictions import CANONICAL_JURISDICTIONS, normalize_jurisdiction
+
 
 class CompanyCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
@@ -32,6 +34,15 @@ class FinancialDataCreate(BaseModel):
     def uppercase_currency(cls, value: str) -> str:
         return value.upper()
 
+    @field_validator("jurisdiction")
+    @classmethod
+    def recognized_jurisdiction(cls, value: str) -> str:
+        """Reject free-text pollution and canonicalise common aliases (US -> United States)."""
+        canonical = normalize_jurisdiction(value)
+        if canonical not in CANONICAL_JURISDICTIONS:
+            raise ValueError(f'"{value}" is not a recognised country/region for Jurisdiction')
+        return canonical
+
 
 class FinancialDataRead(FinancialDataCreate):
     model_config = ConfigDict(from_attributes=True)
@@ -39,8 +50,14 @@ class FinancialDataRead(FinancialDataCreate):
     is_submitted: bool
     is_approved: bool
     requires_manual_confirmation: bool
+    return_reason: str | None = None
     ai_anomaly_flags: dict | None = None
     missing_suggestion: dict | None = None
+
+
+class ReturnRequest(BaseModel):
+    """Optional reason HQ attaches when returning a submission."""
+    reason: str | None = Field(default=None, max_length=500)
 
 
 class MappingSuggestion(BaseModel):

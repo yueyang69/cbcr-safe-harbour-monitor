@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { confirmMapping, createFinancialData, detectAnomalies, listCompanies, listFinancialData, quickSubmitFinancialData, submitFinancialData, suggestMapping, updateFinancialData } from '../api/endpoints'
-import type { AnomalyFlag, Company, FinancialDataInput, MappingSuggestion, UserRole } from '../types'
+import { confirmMapping, createFinancialData, deleteFinancialData, detectAnomalies, listCompanies, listFinancialData, listJurisdictions, quickSubmitFinancialData, submitFinancialData, suggestMapping, updateFinancialData } from '../api/endpoints'
+import { useSession } from '../session'
+import type { AnomalyFlag, Company, FinancialDataInput, MappingSuggestion } from '../types'
 
 const fields = ['jurisdiction', 'fiscal_year', 'currency', 'revenue', 'pbt', 'covered_taxes', 'payroll', 'tangible_assets'] as const
 const labels: Record<typeof fields[number], string> = { jurisdiction: 'Jurisdiction', fiscal_year: 'Fiscal year', currency: 'Currency', revenue: 'Revenue', pbt: 'Profit before tax', covered_taxes: 'Covered taxes', payroll: 'Eligible payroll', tangible_assets: 'Eligible tangible assets' }
@@ -18,17 +19,21 @@ export function DataEntryPage() {
   const [detectingAnomalies, setDetectingAnomalies] = useState(false)
   const [savedDraftId, setSavedDraftId] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
+  const [returnReason, setReturnReason] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [jurisdictions, setJurisdictions] = useState<string[]>([])
 
-  const userRole = (localStorage.getItem('cbcr-role') || 'hq') as UserRole
+  const { role: userRole, entityId } = useSession()
   const isSubsidiary = userRole === 'subsidiary'
   const isApprover = userRole === 'hq' || userRole === 'admin'
-  const entityId = localStorage.getItem('cbcr-entity')
   const showMappingStep = userRole !== 'reviewer'
 
   useEffect(() => {
     setError('')
     setSavedDraftId(null)
     setSubmitted(false)
+    setReturnReason(null)
+    setConfirmDelete(false)
     if (isSubsidiary && !entityId) {
       // Strict GET /companies returns 400 without X-Entity-Id — skip the fetch.
       setCompanies([])
@@ -39,8 +44,11 @@ export function DataEntryPage() {
     listCompanies().then((items) => {
       setCompanies(items)
       const target = isSubsidiary && entityId ? items.find((item) => item.id === entityId) : items[0]
-      if (target) setForm((current) => ({ ...current, company_id: target.id }))
+      // Reset the whole form (not just company_id) so switching entity never
+      // leaves stale numbers from the previous entity behind.
+      if (target) setForm({ company_id: target.id, fiscal_year: 2025, jurisdiction: '', currency: 'EUR', revenue: null, pbt: null, covered_taxes: null, payroll: null, tangible_assets: null })
     }).catch((err: Error) => setError(err.message))
+    listJurisdictions().then(setJurisdictions).catch(() => setJurisdictions([]))
     if (isSubsidiary && entityId) {
       // Resume the strict flow: restore this entity's draft (editable) and surface a
       // pending submission, so a re-save never trips the "already exists" 409.
@@ -50,6 +58,7 @@ export function DataEntryPage() {
         const draft = rows.find((row) => !row.is_submitted && !row.is_approved)
         if (draft) {
           setSavedDraftId(draft.id)
+          setReturnReason(draft.return_reason || null)
           setForm({
             company_id: draft.company_id, fiscal_year: draft.fiscal_year, jurisdiction: draft.jurisdiction, currency: draft.currency,
             revenue: draft.revenue === null ? null : Number(draft.revenue),
@@ -62,6 +71,24 @@ export function DataEntryPage() {
       }).catch(() => undefined)
     }
   }, [isSubsidiary, entityId])
+
+  // Bug A fix: while a submission awaits HQ approval, poll so a Return is picked
+  // up without a manual page refresh. When the row flips back to a draft, the
+  // page automatically returns to the editable state with the return reason.
+  useEffect(() => {
+    if (!isSubsidiary || !submitted || !savedDraftId) return
+    const timer = setInterval(() => {
+      listFinancialData().then((rows) => {
+        const row = rows.find((item) => item.id === savedDraftId)
+        if (row && !row.is_submitted) {
+          setSubmitted(false)
+          setReturnReason(row.return_reason || null)
+          setMessage(row.return_reason ? `HQ returned your submission: ${row.return_reason}` : 'HQ returned your submission. Review it and resubmit.')
+        }
+      }).catch(() => undefined)
+    }, 15000)
+    return () => clearInterval(timer)
+  }, [isSubsidiary, submitted, savedDraftId])
 
   const update = (key: keyof FinancialDataInput, value: string) => setForm((current) => ({ ...current, [key]: ['revenue', 'pbt', 'covered_taxes', 'payroll', 'tangible_assets'].includes(key) ? (value === '' ? null : Number(value)) : key === 'fiscal_year' ? Number(value) : value }))
   const startMapping = async () => { setError(''); setMessage(''); try { setMappings(await suggestMapping(sampleSourceFields)); } catch (err) { setError(err instanceof Error ? err.message : 'Could not suggest mappings.') } }
@@ -97,6 +124,12 @@ export function DataEntryPage() {
     setError('')
     setMessage('')
 
+    // Jurisdiction is a whitelisted country/region — no free-text pollution.
+    if (jurisdictions.length > 0 && !jurisdictions.includes(form.jurisdiction)) {
+      setError('Please choose a recognised country/region for Jurisdiction (start typing to filter the list).')
+      return
+    }
+
     // Run anomaly detection before saving
     if (anomalies.length === 0 && !detectingAnomalies) {
       await runAnomalyDetection()
@@ -113,7 +146,16 @@ export function DataEntryPage() {
         // Strict flow: a draft already exists for this entity/year — update it
         // (backend PUT) instead of creating a duplicate (which would 409).
         await updateFinancialData(savedDraftId, form)
-        setMessage('Draft updated. Review the values, then submit for HQ approval.')
+        if (returnReason) {
+          // Bug B fix: editing a RETURNED draft means "fix it and send it back"
+          // — chain the resubmit so HQ sees it again without a second click.
+          await submitFinancialData(savedDraftId)
+          setReturnReason(null)
+          setSubmitted(true)
+          setMessage('Updated and resubmitted for HQ approval. It appears on the Dashboard once approved.')
+        } else {
+          setMessage('Draft updated. Review the values, then submit for HQ approval.')
+        }
       } else {
         const created = await createFinancialData(form)
         setSavedDraftId(created.id)
@@ -137,10 +179,28 @@ export function DataEntryPage() {
     }
   }
 
+  const deleteDraft = async () => {
+    if (!savedDraftId) return
+    setError('')
+    setMessage('')
+    try {
+      await deleteFinancialData(savedDraftId)
+      setSavedDraftId(null)
+      setSubmitted(false)
+      setReturnReason(null)
+      setConfirmDelete(false)
+      setForm({ company_id: form.company_id, fiscal_year: 2025, jurisdiction: '', currency: 'EUR', revenue: null, pbt: null, covered_taxes: null, payroll: null, tangible_assets: null })
+      setMessage('Draft deleted. Any published dashboard entry was removed too.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not delete the draft.')
+    }
+  }
+
   return <section className="page-wrap entry-page"><div className="page-heading"><div><p className="eyebrow">Source data workspace</p><h1>Prepare source data</h1><p className="heading-copy">Confirm the suggested field mapping, then submit this entity's jurisdiction data for HQ review.</p></div></div>
     {error && <div className="alert alert-error" role="alert">{error}</div>}{message && <div className="alert alert-success" role="status">{message}</div>}
+    {returnReason && !submitted && <div className="alert alert-return" role="alert">❌ <strong>HQ returned your submission</strong> — {returnReason}. Fix the values, then resubmit for approval.</div>}
     <div className="workflow-grid">{showMappingStep && <article className="workflow-step"><div className="step-number">01</div><div><h2>Confirm field mapping</h2><p>AI suggestions are based on source field names. Review each target before confirming.</p></div><button className="button button-secondary" onClick={() => void startMapping()}>Suggest mappings</button>{mappings.length > 0 && <div className="mapping-list">{mappings.map((mapping, index) => <label key={`${mapping.source_field}-${index}`} className="mapping-row"><span>{mapping.source_field}</span><span aria-hidden="true">→</span><select value={mapping.target_field} onChange={(event) => setMappings((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, target_field: event.target.value } : item))}>{fields.map((field) => <option key={field} value={field}>{labels[field]}</option>)}</select><small>{Math.round(Number(mapping.confidence) * 100)}% confidence</small></label>)}<button className="button button-primary" onClick={() => void saveMapping()}>Confirm mapping</button></div>}</article>}
-      <article className="workflow-step"><div className="step-number">{showMappingStep ? '02' : '01'}</div><div><h2>Enter financial data</h2><p>Values are stored as source data. The Safe Harbour engine runs on the server after HQ approval.</p></div><form className="data-form" onSubmit={submit}><label>Company<select required value={form.company_id} onChange={(event) => update('company_id', event.target.value)} disabled={isSubsidiary} title={isSubsidiary ? 'Your entity is bound to the account' : undefined}><option value="">Select company</option>{companies.filter((company) => !isSubsidiary || company.id === entityId).map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label><div className="form-grid">{fields.filter((field) => field !== 'fiscal_year' && field !== 'currency').map((field) => <label key={field}>{labels[field]}<input required={field === 'jurisdiction'} type={field === 'jurisdiction' ? 'text' : 'number'} min={field !== 'jurisdiction' && field !== 'pbt' ? 0 : undefined} step={field === 'jurisdiction' ? undefined : '0.01'} value={form[field] ?? ''} onChange={(event) => update(field, event.target.value)} placeholder={field === 'jurisdiction' ? 'e.g. Japan' : '0.00'} /></label>)}</div><div className="form-grid compact-grid"><label>Fiscal year<select value={form.fiscal_year} onChange={(event) => update('fiscal_year', event.target.value)}><option value="2024">2024</option><option value="2025">2025</option><option value="2026">2026</option><option value="2027">2027</option><option value="2028">2028</option></select></label><label>Currency<input value={form.currency} readOnly disabled title="Currency is fixed to EUR for MVP" style={{ background: '#f5f7fa', cursor: 'not-allowed' }} /></label></div>
+      <article className="workflow-step"><div className="step-number">{showMappingStep ? '02' : '01'}</div><div><h2>Enter financial data</h2><p>Values are stored as source data. The Safe Harbour engine runs on the server after HQ approval.</p></div><form className="data-form" onSubmit={submit}><label>Company<select required value={form.company_id} onChange={(event) => update('company_id', event.target.value)} disabled={isSubsidiary} title={isSubsidiary ? 'Your entity is bound to the account' : undefined}><option value="">Select company</option>{companies.filter((company) => !isSubsidiary || company.id === entityId).map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></label><div className="form-grid">{fields.filter((field) => field !== 'fiscal_year' && field !== 'currency').map((field) => <label key={field}>{labels[field]}<input required={field === 'jurisdiction'} type={field === 'jurisdiction' ? 'text' : 'number'} list={field === 'jurisdiction' ? 'jurisdiction-datalist' : undefined} min={field !== 'jurisdiction' && field !== 'pbt' ? 0 : undefined} step={field === 'jurisdiction' ? undefined : '0.01'} value={form[field] ?? ''} onChange={(event) => update(field, event.target.value)} placeholder={field === 'jurisdiction' ? 'e.g. Japan' : '0.00'} /></label>)}<datalist id="jurisdiction-datalist">{jurisdictions.map((name) => <option key={name} value={name} />)}</datalist></div><div className="form-grid compact-grid"><label>Fiscal year<select value={form.fiscal_year} onChange={(event) => update('fiscal_year', event.target.value)}><option value="2024">2024</option><option value="2025">2025</option><option value="2026">2026</option><option value="2027">2027</option><option value="2028">2028</option></select></label><label>Currency<input value={form.currency} readOnly disabled title="Currency is fixed to EUR for MVP" style={{ background: '#f5f7fa', cursor: 'not-allowed' }} /></label></div>
         <div className="ai-detection-section">
           <button type="button" className="button button-secondary" onClick={() => void runAnomalyDetection()} disabled={detectingAnomalies || !form.company_id}>
             {detectingAnomalies ? '🤖 AI 正在扫描数据异常...' : '🤖 运行 AI 异常检测'}
@@ -162,6 +222,6 @@ export function DataEntryPage() {
           )}
         </div>
         {isSubsidiary && submitted && <div className="alert alert-info" role="status">Submitted and awaiting HQ approval. HQ can return it if corrections are needed.</div>}
-        <div className="form-actions"><button className="button button-primary" type="submit" disabled={!form.company_id || submitted}>{isApprover ? 'Save & publish to dashboard' : savedDraftId ? 'Update draft' : 'Save source data'}</button>{isSubsidiary && savedDraftId && !submitted && <button type="button" className="button button-secondary" onClick={() => void submitForApproval()}>Submit for approval</button>}</div></form></article></div>
+        <div className="form-actions"><button className="button button-primary" type="submit" disabled={!form.company_id || submitted}>{isApprover ? 'Save & publish to dashboard' : savedDraftId ? (returnReason ? 'Update & resubmit for approval' : 'Update draft') : 'Save source data'}</button>{isSubsidiary && savedDraftId && !submitted && <button type="button" className="button button-secondary" onClick={() => void submitForApproval()}>Submit for approval</button>}{savedDraftId && !submitted && <button type="button" className={`button ${confirmDelete ? 'button-danger' : 'button-secondary'}`} onClick={() => setConfirmDelete((value) => !value)}>{confirmDelete ? 'Confirm delete?' : 'Delete draft'}</button>}{confirmDelete && <span className="confirm-inline"><span>This cannot be undone.</span><button type="button" className="button button-secondary" onClick={() => setConfirmDelete(false)}>Cancel</button></span>}</div></form></article></div>
   </section>
 }

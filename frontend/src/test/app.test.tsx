@@ -1,8 +1,8 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { StatusBadge } from '../components/StatusBadge'
-import { listFinancialData } from '../api/endpoints'
+import { listAllCompanies, listFinancialData, quickSubmitFinancialData } from '../api/endpoints'
 import type { FinancialData } from '../types'
 
 const draftRow: FinancialData = {
@@ -27,6 +27,9 @@ vi.mock('../api/endpoints', () => ({
   approveFinancialData: vi.fn().mockResolvedValue({}),
   returnFinancialData: vi.fn().mockResolvedValue({}),
   updateFinancialData: vi.fn().mockResolvedValue({}),
+  deleteFinancialData: vi.fn().mockResolvedValue(undefined),
+  login: vi.fn().mockResolvedValue({ role: 'admin', username: 'admin' }),
+  listJurisdictions: vi.fn().mockResolvedValue(['Japan', 'Germany', 'United States']),
 }))
 
 afterEach(() => { cleanup(); localStorage.clear(); vi.mocked(listFinancialData).mockResolvedValue([]) })
@@ -90,6 +93,48 @@ describe('data entry for subsidiary', () => {
     expect(await screen.findByText('Submit for approval')).toBeVisible()
     expect(screen.getByText('Update draft')).toBeVisible()
   })
+
+  it('reloads the page data when the entity switcher changes', async () => {
+    localStorage.setItem('cbcr-role', 'subsidiary')
+    localStorage.setItem('cbcr-entity', 'ent-1')
+    vi.mocked(listAllCompanies).mockResolvedValue([
+      { id: 'ent-1', name: 'Acme China A', country: 'CN', entity_type: 'subsidiary', parent_entity_id: null },
+      { id: 'ent-2', name: 'Acme China B', country: 'CN', entity_type: 'subsidiary', parent_entity_id: null },
+    ])
+    vi.mocked(listFinancialData).mockResolvedValue([draftRow])
+    const { AppRoutes } = await import('../App')
+    render(<MemoryRouter initialEntries={['/data-entry']}><AppRoutes /></MemoryRouter>)
+
+    await screen.findByText('Confirm field mapping')
+    const callsBefore = vi.mocked(listFinancialData).mock.calls.length
+
+    fireEvent.change(screen.getByLabelText('Current entity'), { target: { value: 'ent-2' } })
+    await waitFor(() => expect(vi.mocked(listFinancialData).mock.calls.length).toBeGreaterThan(callsBefore))
+  })
+})
+
+describe('jurisdiction whitelist', () => {
+  it('offers a datalist of recognised countries/regions', async () => {
+    localStorage.setItem('cbcr-role', 'hq')
+    const { AppRoutes } = await import('../App')
+    render(<MemoryRouter initialEntries={['/data-entry']}><AppRoutes /></MemoryRouter>)
+
+    await screen.findByText('Confirm field mapping')
+    expect(screen.getByLabelText('Jurisdiction')).toHaveAttribute('list', 'jurisdiction-datalist')
+  })
+
+  it('blocks a jurisdiction that is not on the whitelist', async () => {
+    localStorage.setItem('cbcr-role', 'hq')
+    const { AppRoutes } = await import('../App')
+    render(<MemoryRouter initialEntries={['/data-entry']}><AppRoutes /></MemoryRouter>)
+
+    await screen.findByText('Confirm field mapping')
+    fireEvent.change(screen.getByLabelText('Jurisdiction'), { target: { value: 'TestReturn' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save & publish to dashboard' }))
+
+    expect(await screen.findByText(/recognised country\/region/)).toBeVisible()
+    expect(quickSubmitFinancialData).not.toHaveBeenCalled()
+  })
 })
 
 describe('HQ approval queue', () => {
@@ -112,5 +157,61 @@ describe('HQ approval queue', () => {
     render(<MemoryRouter initialEntries={['/approvals']}><AppRoutes /></MemoryRouter>)
 
     expect(await screen.findByText('No submissions awaiting review')).toBeVisible()
+  })
+
+  it('shows admin-only delete controls and an all-records table', async () => {
+    localStorage.setItem('cbcr-role', 'admin')
+    localStorage.setItem('cbcr-admin-auth', '1')
+    vi.mocked(listFinancialData).mockResolvedValue([pendingRow])
+    const { AppRoutes } = await import('../App')
+    render(<MemoryRouter initialEntries={['/approvals']}><AppRoutes /></MemoryRouter>)
+
+    expect(await screen.findByRole('heading', { name: 'Approvals' })).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'All records' })).toBeVisible()
+    expect(screen.getByText('Pending review')).toBeVisible()
+    expect(screen.getAllByRole('button', { name: 'Delete' }).length).toBeGreaterThan(0)
+  })
+
+  it('opens a reason dialog when returning a submission', async () => {
+    localStorage.setItem('cbcr-role', 'hq')
+    vi.mocked(listFinancialData).mockResolvedValue([pendingRow])
+    const { AppRoutes } = await import('../App')
+    render(<MemoryRouter initialEntries={['/approvals']}><AppRoutes /></MemoryRouter>)
+
+    await screen.findByText('Acme China A')
+    fireEvent.click(screen.getByRole('button', { name: 'Return' }))
+    expect(await screen.findByRole('dialog', { name: 'Return submission' })).toBeVisible()
+    expect(screen.getByPlaceholderText(/Reason for returning/i)).toBeVisible()
+  })
+})
+
+describe('returned draft resubmission for subsidiary', () => {
+  it('surfaces the HQ return reason and offers combined update + resubmit', async () => {
+    localStorage.setItem('cbcr-role', 'subsidiary')
+    localStorage.setItem('cbcr-entity', 'ent-1')
+    vi.mocked(listFinancialData).mockResolvedValueOnce([{ ...draftRow, return_reason: 'Revenue does not match the trial balance.' }])
+    const { AppRoutes } = await import('../App')
+    render(<MemoryRouter initialEntries={['/data-entry']}><AppRoutes /></MemoryRouter>)
+
+    expect(await screen.findByText(/HQ returned your submission/)).toBeVisible()
+    expect(screen.getByText(/trial balance/)).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Update & resubmit for approval' })).toBeVisible()
+  })
+})
+
+describe('admin login page', () => {
+  it('signs in as admin and lands on the approvals queue', async () => {
+    localStorage.setItem('cbcr-role', 'hq')
+    const { AppRoutes } = await import('../App')
+    render(<MemoryRouter initialEntries={['/login']}><AppRoutes /></MemoryRouter>)
+
+    await screen.findByRole('heading', { name: 'Sign in' })
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'admin123' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in as Admin' }))
+
+    expect(await screen.findByRole('heading', { name: 'Approvals' })).toBeVisible()
+    expect(localStorage.getItem('cbcr-role')).toBe('admin')
+    expect(localStorage.getItem('cbcr-admin-auth')).toBe('1')
   })
 })
