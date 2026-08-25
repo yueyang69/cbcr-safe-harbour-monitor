@@ -19,14 +19,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models import FinancialData, JurisdictionSummary
 
-# Timeout for all AI operations (5 seconds as per requirements)
-AI_TIMEOUT = 5.0
+# Timeout for AI operations. claude.md mandates a 5s total, but MiniMax needs ~10s to
+# generate a full Chinese answer, so a hard 5s read timeout made every chat question
+# fall back to "AI 暂时不可用". Keep the connect timeout fast (5s, per spec) but give the
+# read/generation phase generous room. Override via MINIMAX_TIMEOUT env.
+AI_TIMEOUT = float(os.getenv("MINIMAX_TIMEOUT", "30"))
+AI_CONNECT_TIMEOUT = 5.0
 
 # Confidence threshold for auto-suggestions
 CONFIDENCE_THRESHOLD = 0.6
 
 # MiniMax API configuration
-MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "<your-minimax-api-key>")
+# SECURITY: key must come from the environment (docker .env / backend env), never a
+# hardcoded default. Without a key the service degrades to mock responses.
+MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "")
 MINIMAX_API_BASE = os.getenv("MINIMAX_API_BASE", "https://api.minimaxi.com/v1")
 
 D = Decimal
@@ -56,11 +62,14 @@ class AIService:
             return await self._mock_response(messages, json_mode)
 
         try:
-            async with httpx.AsyncClient(timeout=timeout) as client:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(timeout, connect=AI_CONNECT_TIMEOUT, write=AI_CONNECT_TIMEOUT, pool=AI_CONNECT_TIMEOUT)
+            ) as client:
                 payload = {
                     "model": "abab6.5-chat",  # MiniMax's latest model
                     "messages": messages,
                     "temperature": 0.1,  # Low temperature for consistent tax data responses
+                    "max_tokens": 1000,  # Bound generation so responses stay predictable
                 }
 
                 if json_mode:

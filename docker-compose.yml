@@ -14,6 +14,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://cbcr:cbcr_dev_only@db:5432/cbcr
       CORS_ORIGINS: http://localhost:5173,http://47.253.231.221:5173
+      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
     depends_on:
       - db
     ports:
