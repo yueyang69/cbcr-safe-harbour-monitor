@@ -1,7 +1,7 @@
 """Unit tests for AI service with mocked LLM calls."""
 import pytest
 from decimal import Decimal
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services.ai_service import AIService, AIServiceError
 
@@ -10,6 +10,11 @@ from app.services.ai_service import AIService, AIServiceError
 def mock_session():
     """Mock AsyncSession for testing."""
     session = AsyncMock()
+    # Python 3.14 AsyncMock child return_value is itself an AsyncMock, which turns
+    # `session.scalars(...).all()` / `.first()` into un-awaited coroutines and breaks
+    # the sync `list(...).all()` pattern. Force a plain Mock so those stay synchronous.
+    scalars_result = MagicMock()
+    session.scalars.return_value = scalars_result
     return session
 
 

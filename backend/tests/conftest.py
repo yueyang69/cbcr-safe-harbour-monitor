@@ -7,6 +7,21 @@ from app.models import Base
 
 
 @pytest.fixture
+async def query_db(tmp_path):
+    """Shared-session query access to the same SQLite file the client uses.
+
+    Lets tests assert on side effects that have no GET endpoint (e.g. whether
+    confirm_mapping persisted a MappingRule). Same tmp_path -> same test.db.
+    """
+    engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'test.db'}")
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    yield session_factory
+    await engine.dispose()
+
+
+@pytest.fixture
 async def client(tmp_path):
     engine = create_async_engine(f"sqlite+aiosqlite:///{tmp_path / 'test.db'}")
     session_factory = async_sessionmaker(engine, expire_on_commit=False)

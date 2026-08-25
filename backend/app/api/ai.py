@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_session
-from ..dependencies import Role, require_roles
+from ..dependencies import Role, current_entity, require_entity_scope, require_roles
 from ..schemas import (
     AnomalyDetectionRequest,
     AnomalyDetectionResponse,
@@ -22,12 +22,14 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 async def detect_anomalies(
     payload: AnomalyDetectionRequest,
     session: AsyncSession = Depends(get_session),
-    _: Role = Depends(require_roles(Role.SUBSIDIARY, Role.HQ, Role.ADMIN)),
+    role: Role = Depends(require_roles(Role.SUBSIDIARY, Role.HQ, Role.ADMIN)),
+    entity_id: str | None = Depends(current_entity),
 ):
     """Detect data anomalies: ratio issues, volatility vs prior year, missing critical fields.
 
     WARNING ONLY - never auto-modifies values.
     """
+    require_entity_scope(role, entity_id, payload.company_id)
     try:
         ai_service = AIService(session)
         anomalies = await ai_service.detect_anomalies(
@@ -51,12 +53,14 @@ async def detect_anomalies(
 async def suggest_missing_value(
     payload: SuggestMissingRequest,
     session: AsyncSession = Depends(get_session),
-    _: Role = Depends(require_roles(Role.SUBSIDIARY, Role.HQ, Role.ADMIN)),
+    role: Role = Depends(require_roles(Role.SUBSIDIARY, Role.HQ, Role.ADMIN)),
+    entity_id: str | None = Depends(current_entity),
 ):
     """Suggest missing field value based on company historical data (median/average).
 
     Requires user confirmation before applying.
     """
+    require_entity_scope(role, entity_id, payload.company_id)
     try:
         ai_service = AIService(session)
         suggestion = await ai_service.suggest_missing_value(

@@ -106,7 +106,7 @@ class AIService:
             return {"anomalies": []} if json_mode else "未检测到异常"
         elif "briefing" in last_message or "简报" in last_message:
             return "AI服务暂时不可用，请稍后重试。"
-        elif "question" in last_message or "explain" in last_message:
+        elif "question" in last_message or "explain" in last_message or "如何" in last_message or "为什么" in last_message or "？" in last_message:
             return "此问题超出我的能力范围，请联系您的税务顾问。"
 
         return {"status": "ok"} if json_mode else "收到"
@@ -213,12 +213,21 @@ Only return the JSON, no explanation."""}
                 )
 
                 if isinstance(response, dict) and "mappings" in response:
-                    for mapping in response["mappings"]:
-                        suggestions.append({
-                            "source_field": mapping.get("source", ""),
-                            "target_field": mapping.get("target", "revenue"),
-                            "confidence": mapping.get("confidence", 0.5),
-                        })
+                    if response["mappings"]:
+                        for mapping in response["mappings"]:
+                            suggestions.append({
+                                "source_field": mapping.get("source", ""),
+                                "target_field": mapping.get("target", "revenue"),
+                                "confidence": mapping.get("confidence", 0.5),
+                            })
+                    else:
+                        # AI returned no mappings -> degrade to low-confidence suggestions
+                        for field in unknown_fields:
+                            suggestions.append({
+                                "source_field": field,
+                                "target_field": "revenue",
+                                "confidence": 0.3,
+                            })
 
             except (AIServiceError, asyncio.TimeoutError):
                 # Graceful degradation: return low-confidence suggestions

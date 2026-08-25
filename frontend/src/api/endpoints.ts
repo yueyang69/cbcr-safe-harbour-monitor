@@ -37,6 +37,14 @@ export async function listCompanies(): Promise<Company[]> {
   return data
 }
 
+// HQ-override request used ONLY by the demo identity switcher to enumerate
+// entities. Real backend permissions stay strict — a subsidiary can still only
+// ever read its own entity.
+export async function listAllCompanies(): Promise<Company[]> {
+  const { data } = await api.get<Company[]>('/companies', { headers: { 'X-User-Role': 'hq' } })
+  return data
+}
+
 export async function suggestMapping(sourceFields: string[]): Promise<MappingSuggestion[]> {
   const { data } = await api.post<MappingSuggestion[]>('/mapping/suggest', { source_fields: sourceFields })
   return data
@@ -52,6 +60,13 @@ export async function createFinancialData(payload: FinancialDataInput): Promise<
   return data
 }
 
+// MVP quick-test: upsert + auto-approve + rebuild, so the row shows on the
+// Dashboard immediately. HQ/admin only (the approver enters and approves in one step).
+export async function quickSubmitFinancialData(payload: FinancialDataInput): Promise<FinancialData> {
+  const { data } = await api.post<FinancialData>('/financial-data/quick-submit', payload)
+  return data
+}
+
 export async function listFinancialData(companyId?: string): Promise<FinancialData[]> {
   const { data } = await api.get<FinancialData[]>('/financial-data', { params: companyId ? { company_id: companyId } : undefined })
   return data
@@ -60,6 +75,25 @@ export async function listFinancialData(companyId?: string): Promise<FinancialDa
 export async function submitFinancialData(id: string): Promise<FinancialData> {
   const { data } = await api.post<FinancialData>(`/financial-data/${id}/submit`)
   return data
+}
+
+export async function approveFinancialData(id: string): Promise<FinancialData> {
+  const { data } = await api.post<FinancialData>(`/financial-data/${id}/approve`)
+  return data
+}
+
+export async function returnFinancialData(id: string): Promise<FinancialData> {
+  const { data } = await api.post<FinancialData>(`/financial-data/${id}/return`)
+  return data
+}
+
+export async function updateFinancialData(id: string, payload: FinancialDataInput): Promise<FinancialData> {
+  const { data } = await api.put<FinancialData>(`/financial-data/${id}`, payload)
+  return data
+}
+
+export async function deleteFinancialData(id: string): Promise<void> {
+  await api.delete(`/financial-data/${id}`)
 }
 
 // AI Service Endpoints

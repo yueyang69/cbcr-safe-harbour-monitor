@@ -1,4 +1,5 @@
-export type UserRole = 'subsidiary' | 'hq' | 'reviewer'
+export type UserRole = 'subsidiary' | 'hq' | 'reviewer' | 'admin'
+export type EntityType = 'subsidiary' | 'branch'
 export type ResultStatus = 'PASS' | 'FAIL' | 'WARNING' | 'INCOMPLETE'
 export type NumericValue = string | number | null
 
@@ -61,6 +62,8 @@ export interface Company {
   id: string
   name: string
   country: string | null
+  entity_type: EntityType
+  parent_entity_id: string | null
 }
 
 export interface FinancialDataInput {

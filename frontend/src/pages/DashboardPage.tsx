@@ -24,8 +24,12 @@ export function DashboardPage() {
   const [error, setError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const rows = useMemo(() => data?.jurisdictions || [], [data])
-  const load = async () => { setLoading(true); setError(''); try { setData(await getDashboard(year)) } catch (err) { setError(err instanceof Error ? err.message : 'Unable to load dashboard.') } finally { setLoading(false) } }
+  // silent mode: keep the previous data + loading state on transient errors, so a
+  // background auto-refresh never flashes the table or the error banner.
+  const load = async (silent = false) => { if (!silent) setLoading(true); try { setData(await getDashboard(year)) } catch (err) { if (!silent) setError(err instanceof Error ? err.message : 'Unable to load dashboard.') } finally { if (!silent) setLoading(false) } }
   useEffect(() => { void load() }, [year])
+  // MVP Scenario 1: auto-refresh so a data-entry save shows up without a manual reload.
+  useEffect(() => { const id = window.setInterval(() => { void load(true) }, 10000); return () => window.clearInterval(id) }, [year])
   const refresh = async () => { setRefreshing(true); setError(''); try { await rebuildSummaries(year); await load() } catch (err) { setError(err instanceof Error ? err.message : 'Unable to rebuild summaries.') } finally { setRefreshing(false) } }
 
   return <section className="page-wrap"><div className="page-heading"><div><p className="eyebrow">Group overview / FY {year}</p><h1>Safe Harbour monitor</h1><p className="heading-copy">Review jurisdiction-level eligibility signals before moving to detailed GloBE analysis.</p></div><div className="heading-actions"><label className="year-control">Fiscal year<select value={year} onChange={(event) => setYear(Number(event.target.value))}><option value="2024">2024</option><option value="2025">2025</option><option value="2026">2026</option></select></label><button className="button button-primary" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? 'Refreshing…' : '↻ Refresh summaries'}</button></div></div>

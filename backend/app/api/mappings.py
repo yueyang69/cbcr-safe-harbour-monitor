@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_session
 from ..dependencies import Role, require_roles
@@ -13,7 +14,7 @@ router = APIRouter(prefix="/mapping", tags=["mapping"])
 async def suggest_mapping(
     payload: MappingSuggestRequest,
     session: AsyncSession = Depends(get_session),
-    _: Role = Depends(require_roles(Role.HQ, Role.ADMIN))
+    _: Role = Depends(require_roles(Role.SUBSIDIARY, Role.HQ, Role.ADMIN))
 ):
     """AI-enhanced field mapping with comprehensive fallback dictionary.
 
@@ -37,19 +38,35 @@ async def suggest_mapping(
 async def confirm_mapping(
     payload: MappingConfirmRequest,
     session: AsyncSession = Depends(get_session),
-    _: Role = Depends(require_roles(Role.HQ, Role.ADMIN))
+    role: Role = Depends(require_roles(Role.SUBSIDIARY, Role.HQ, Role.ADMIN))
 ):
     """Confirm AI-suggested mappings after human review.
 
-    All mappings marked as confirmed_by_user=True after manual approval.
+    HQ/admin confirm persists a GLOBAL mapping rule — the shared dictionary the
+    whole group uses. A subsidiary's confirm is scoped to THIS entity/upload
+    only: it acknowledges the mapping used for its own data and must never
+    modify the global rules. (Per-entity mapping_rule can be added later if
+    multinational entity tables diverge.)
     """
-    for mapping in payload.mappings:
-        session.add(MappingRule(
-            source_field=mapping.source_field,
-            target_field=mapping.target_field,
-            confirmed_by="hq",
-            confidence_score=float(mapping.confidence),
-            confirmed_by_user=True,  # Human confirmed after AI suggestion
-        ))
-    await session.commit()
+    if role in (Role.HQ, Role.ADMIN):
+        for mapping in payload.mappings:
+            # Idempotent upsert: re-confirming a known rule updates it instead of
+            # tripping the (source_field, target_field) unique constraint.
+            rule = await session.scalar(select(MappingRule).where(
+                MappingRule.source_field == mapping.source_field,
+                MappingRule.target_field == mapping.target_field,
+            ))
+            if rule is None:
+                session.add(MappingRule(
+                    source_field=mapping.source_field,
+                    target_field=mapping.target_field,
+                    confirmed_by=role.value,
+                    confidence_score=float(mapping.confidence),
+                    confirmed_by_user=True,  # Human confirmed after AI suggestion
+                ))
+            else:
+                rule.confirmed_by = role.value
+                rule.confidence_score = float(mapping.confidence)
+                rule.confirmed_by_user = True
+        await session.commit()
     return payload.mappings

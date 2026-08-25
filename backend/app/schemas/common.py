@@ -1,10 +1,14 @@
 from decimal import Decimal
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class CompanyCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     country: str | None = Field(default=None, max_length=100)
+    entity_type: Literal["subsidiary", "branch"] = "subsidiary"
+    parent_entity_id: str | None = None
 
 
 class CompanyRead(CompanyCreate):

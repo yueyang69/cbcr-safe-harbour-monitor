@@ -1,8 +1,12 @@
 from decimal import Decimal
 from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.sqlite import JSON as SQLiteJSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import Base, Timestamped, UUIDPrimaryKey
+
+# JSONB on PostgreSQL; falls back to JSON on SQLite so tests can build the schema.
+JSONB_VARIANT = JSONB().with_variant(SQLiteJSON(), "sqlite")
 
 
 class FinancialData(UUIDPrimaryKey, Timestamped, Base):
@@ -21,7 +25,7 @@ class FinancialData(UUIDPrimaryKey, Timestamped, Base):
     is_submitted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     requires_manual_confirmation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    ai_anomaly_flags: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    missing_suggestion: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    ai_anomaly_flags: Mapped[dict | None] = mapped_column(JSONB_VARIANT, nullable=True)
+    missing_suggestion: Mapped[dict | None] = mapped_column(JSONB_VARIANT, nullable=True)
 
     company: Mapped["Company"] = relationship(back_populates="financial_data")
