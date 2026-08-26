@@ -75,10 +75,36 @@ JURISDICTION_ALIASES = {
     "Ivory Coast (Côte d'Ivoire)": "Ivory Coast",
 }
 
+# Demo CSV first-column values are legal-entity names ("新加坡子公司") rather than
+# the jurisdiction. Map them to the canonical country so batch import stays on the
+# whitelist while the CSV keeps the human-readable entity name.
+ENTITY_NAME_JURISDICTIONS = {
+    "新加坡子公司": "Singapore", "新加坡": "Singapore",
+    "马来西亚子公司": "Malaysia", "马来西亚": "Malaysia",
+    "越南子公司": "Vietnam", "越南": "Vietnam",
+    "泰国子公司": "Thailand", "泰国": "Thailand",
+    "印尼子公司": "Indonesia", "印尼": "Indonesia",
+    "菲律宾子公司": "Philippines", "菲律宾": "Philippines",
+    "日本子公司": "Japan", "日本": "Japan",
+    "韩国子公司": "South Korea", "韩国": "South Korea",
+    "台湾子公司": "Taiwan", "台湾": "Taiwan",
+    "香港子公司": "Hong Kong", "香港": "Hong Kong",
+}
+
 
 def normalize_jurisdiction(value: str) -> str:
     """Return the canonical name, or the original value if it is not recognised."""
     return JURISDICTION_ALIASES.get(value, value)
+
+
+def canonical_jurisdiction(value: str) -> str:
+    """Resolve an input to its canonical jurisdiction name.
+
+    Chains legal-entity name -> alias -> raw value (e.g. "新加坡子公司" -> "Singapore",
+    "US" -> "United States"). Used by both the single-entry and batch import paths
+    so entity-name CSV columns still land on recognised jurisdictions.
+    """
+    return ENTITY_NAME_JURISDICTIONS.get(value) or normalize_jurisdiction(value)
 
 
 def is_valid_jurisdiction(value: str) -> bool:

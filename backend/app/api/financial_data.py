@@ -219,6 +219,9 @@ async def batch_submit(
     ))).all())
     for row in rows:
         row.is_submitted = True
+        # A batch resubmission is a fresh review cycle — drop stale return reasons,
+        # matching the single-row submit endpoint.
+        row.return_reason = None
     await session.commit()
     return BatchSubmitResponse(submitted_count=len(rows))
 

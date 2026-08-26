@@ -20,15 +20,15 @@ const uploadResult: BatchUploadResult = {
   columns: [
     { csv_name: 'jurisdiction', mapped_field: 'jurisdiction', confidence: 1.0, sample_values: ['Japan', 'Germany'] },
     { csv_name: 'revenue', mapped_field: 'revenue', confidence: 1.0, sample_values: ['8500000', '4200000'] },
-    { csv_name: 'unknown_col', mapped_field: null, confidence: 0, sample_values: ['x', 'y'] },
+    { csv_name: 'unknown_col', mapped_field: null, confidence: 0, sample_values: ['85', '42'] },
   ],
   preview_data: [
-    { jurisdiction: 'Japan', revenue: '8500000', unknown_col: 'x' },
-    { jurisdiction: 'Germany', revenue: '4200000', unknown_col: 'y' },
+    { jurisdiction: 'Japan', revenue: '8500000', unknown_col: '85' },
+    { jurisdiction: 'Germany', revenue: '4200000', unknown_col: '42' },
   ],
   rows: [
-    { jurisdiction: 'Japan', revenue: '8500000', unknown_col: 'x' },
-    { jurisdiction: 'Germany', revenue: '4200000', unknown_col: 'y' },
+    { jurisdiction: 'Japan', revenue: '8500000', unknown_col: '85' },
+    { jurisdiction: 'Germany', revenue: '4200000', unknown_col: '42' },
   ],
 }
 
@@ -78,7 +78,34 @@ describe('CsvUploadPage', () => {
     expect(payload.rows).toHaveLength(2)
     expect(payload.rows[0].jurisdiction).toBe('Japan')
     expect(payload.rows[0].revenue).toBe(8500000)
-    expect(payload.rows[0].pbt).toBeNull()
+    expect(payload.rows[0].pbt).toBe(85)
+  })
+
+  it('blocks the commit and surfaces a live warning when a numeric cell is not a number', async () => {
+    const user = userEvent.setup()
+    vi.mocked(batchUploadCsv).mockResolvedValue({
+      ...uploadResult,
+      rows: [
+        { jurisdiction: 'Japan', revenue: '八千五百万', unknown_col: 'x' },
+        { jurisdiction: 'Germany', revenue: '4200000', unknown_col: 'y' },
+      ],
+    })
+
+    const { container } = render(<MemoryRouter><CsvUploadPage /></MemoryRouter>)
+    const file = new File(['jurisdiction,revenue\nJapan,八千五百万'], 'demo.csv', { type: 'text/csv' })
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    const parseButton = screen.getByRole('button', { name: /解析并映射列名/ })
+    await waitFor(() => expect(parseButton).toBeEnabled())
+    await user.click(parseButton)
+    await screen.findByText(/数据预览（前 2 行/)
+
+    // The unparseable cell is surfaced immediately and blocks the commit.
+    const warnings = await screen.findAllByText(/无法解析为数字/)
+    expect(warnings.length).toBeGreaterThan(0)
+    await user.click(screen.getByRole('button', { name: /确认导入 2 条/ }))
+    expect(batchCommitCsv).not.toHaveBeenCalled()
   })
 
   it('warns about blank jurisdictions before committing', async () => {

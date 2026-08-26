@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from ..jurisdictions import CANONICAL_JURISDICTIONS, normalize_jurisdiction
+from ..jurisdictions import CANONICAL_JURISDICTIONS, canonical_jurisdiction
 
 
 class CompanyCreate(BaseModel):
@@ -37,8 +37,9 @@ class FinancialDataCreate(BaseModel):
     @field_validator("jurisdiction")
     @classmethod
     def recognized_jurisdiction(cls, value: str) -> str:
-        """Reject free-text pollution and canonicalise common aliases (US -> United States)."""
-        canonical = normalize_jurisdiction(value)
+        """Reject free-text pollution and canonicalise aliases / entity names
+        (US -> United States, 新加坡子公司 -> Singapore)."""
+        canonical = canonical_jurisdiction(value)
         if canonical not in CANONICAL_JURISDICTIONS:
             raise ValueError(f'"{value}" is not a recognised country/region for Jurisdiction')
         return canonical
@@ -167,6 +168,16 @@ class BatchRowInput(BaseModel):
     @classmethod
     def uppercase_currency(cls, value: str) -> str:
         return value.upper()
+
+    @field_validator("jurisdiction")
+    @classmethod
+    def recognized_jurisdiction(cls, value: str) -> str:
+        """Same whitelist + canonicalisation as the single-entry path, so a CSV
+        can never write junk jurisdictions (e.g. a stray entity name)."""
+        canonical = canonical_jurisdiction(value)
+        if canonical not in CANONICAL_JURISDICTIONS:
+            raise ValueError(f'"{value}" is not a recognised country/region for Jurisdiction')
+        return canonical
 
 
 class BatchCommitRequest(BaseModel):

@@ -30,6 +30,7 @@ export function CsvUploadPage() {
   const [commitResult, setCommitResult] = useState<BatchCommitResult | null>(null)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  const [parseErrors, setParseErrors] = useState<string[]>([])
 
   const userRole = (localStorage.getItem('cbcr-role') || 'hq') as UserRole
   const isSubsidiary = userRole === 'subsidiary'
@@ -94,9 +95,10 @@ export function CsvUploadPage() {
     ))
   }
 
-  const buildRows = (): BatchRowInput[] => {
-    if (!uploadResult) return []
-    return uploadResult.rows.map((raw) => {
+  const buildRows = (): { rows: BatchRowInput[]; errors: string[] } => {
+    if (!uploadResult) return { rows: [], errors: [] }
+    const errors: string[] = []
+    const rows = uploadResult.rows.map((raw, rowIndex) => {
       const row: BatchRowInput = { jurisdiction: '', currency: 'EUR', revenue: null, pbt: null, covered_taxes: null, payroll: null, tangible_assets: null }
       for (const col of mappings) {
         if (!col.mapped_field) continue
@@ -104,16 +106,36 @@ export function CsvUploadPage() {
         if (col.mapped_field === 'jurisdiction') row.jurisdiction = value
         else if (col.mapped_field === 'currency') row.currency = value.toUpperCase()
         else if (isNumericField(col.mapped_field)) {
+          if (value === '') { row[col.mapped_field] = null; continue }
           const num = Number(value.replace(/,/g, ''))
-          row[col.mapped_field] = value === '' || Number.isNaN(num) ? null : num
+          if (Number.isNaN(num)) {
+            // A non-empty cell that is not a number (e.g. "八千五百万") must be
+            // surfaced, never silently stored as null.
+            errors.push(`第 ${rowIndex + 2} 行「${col.csv_name}」的值 "${value}" 无法解析为数字`)
+            row[col.mapped_field] = null
+          } else {
+            row[col.mapped_field] = num
+          }
         }
       }
       return row
     })
+    return { rows, errors }
   }
 
+  // Show unparseable cells as soon as the mapping changes, before the user clicks
+  // "确认导入", so a bad value can be corrected rather than committed as blank.
+  useEffect(() => {
+    if (!uploadResult) { setParseErrors([]); return }
+    setParseErrors(buildRows().errors)
+  }, [uploadResult, mappings])
+
   const confirmCommit = async () => {
-    const rows = buildRows()
+    const { rows, errors } = buildRows()
+    if (errors.length > 0) {
+      setError(`有 ${errors.length} 处数值无法解析，已阻止导入。请修正 CSV 后重新上传，或调整列映射。`)
+      return
+    }
     const blankJurisdiction = rows.filter((row) => !row.jurisdiction).length
     if (blankJurisdiction > 0) {
       setError(`有 ${blankJurisdiction} 行缺少 Jurisdiction，请检查列映射后重试。`)
@@ -173,6 +195,12 @@ export function CsvUploadPage() {
                   : <small className="confidence-missing">❌ 需人工选择</small>}
               </label>
             ))}
+          </div>
+        )}
+        {parseErrors.length > 0 && (
+          <div className="alert alert-error" role="alert">
+            <strong>{parseErrors.length} 处数值无法解析为数字，导入已被阻止：</strong>
+            <ul className="parse-error-list">{parseErrors.slice(0, 5).map((e) => <li key={e}>{e}</li>)}</ul>
           </div>
         )}
         {uploadResult && uploadResult.preview_data.length > 0 && (

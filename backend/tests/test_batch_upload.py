@@ -207,6 +207,26 @@ async def test_batch_commit_non_eur_requires_manual_confirmation(client):
     assert rows[0]["requires_manual_confirmation"] is True
 
 
+async def test_batch_commit_entity_name_maps_to_canonical_jurisdiction(client):
+    """A CSV entity-name value (新加坡子公司) is stored as its canonical country (Singapore)."""
+    company_id = await _make_company(client)
+    response = await client.post("/api/v1/financial-data/batch-commit", headers={"X-User-Role": "hq"}, json=_commit_payload(company_id, [
+        {"jurisdiction": "新加坡子公司", "currency": "EUR", "revenue": "8500000"},
+    ]))
+    assert response.status_code == 200
+    rows = (await client.get("/api/v1/financial-data", headers={"X-User-Role": "hq"}, params={"company_id": company_id})).json()
+    assert rows[0]["jurisdiction"] == "Singapore"
+
+
+async def test_batch_commit_rejects_unknown_jurisdiction(client):
+    """Batch import cannot bypass the whitelist either (no junk jurisdictions)."""
+    company_id = await _make_company(client)
+    response = await client.post("/api/v1/financial-data/batch-commit", headers={"X-User-Role": "hq"}, json=_commit_payload(company_id, [
+        {"jurisdiction": "TestReturn", "currency": "EUR", "revenue": "1"},
+    ]))
+    assert response.status_code == 422  # pydantic validation error
+
+
 # --- batch-submit (whole import reaches HQ in one click) ---
 
 async def test_batch_submit_submits_all_drafts(client):
@@ -245,6 +265,28 @@ async def test_batch_submit_is_idempotent_and_skips_approved(client):
     # an approved row is never re-submitted
     rows = (await client.get("/api/v1/financial-data", headers=headers, params={"company_id": company_id})).json()
     assert rows[0]["is_approved"] is False
+
+
+async def test_batch_submit_clears_return_reason(client):
+    """Resubmitting a returned row via batch-submit drops the stale return reason."""
+    company_id = await _make_company(client)
+    headers = {"X-User-Role": "hq"}
+    created = await client.post("/api/v1/financial-data/quick-submit", headers=headers, json={
+        "company_id": company_id, "fiscal_year": 2026, "jurisdiction": "Japan", "currency": "EUR", "revenue": "1",
+    })
+    assert created.status_code == 200
+    returned = await client.post(f"/api/v1/financial-data/{created.json()['id']}/return", headers=headers, json={"reason": "fix the revenue"})
+    assert returned.status_code == 200
+    assert returned.json()["is_submitted"] is False
+    assert returned.json()["return_reason"] == "fix the revenue"
+
+    submitted = await client.post("/api/v1/financial-data/batch-submit", headers=headers,
+                                  json={"company_id": company_id, "fiscal_year": 2026})
+    assert submitted.status_code == 200
+    assert submitted.json()["submitted_count"] == 1
+    rows = (await client.get("/api/v1/financial-data", headers=headers, params={"company_id": company_id})).json()
+    assert rows[0]["is_submitted"] is True
+    assert rows[0]["return_reason"] is None
 
 
 async def test_batch_submit_subsidiary_other_company_403(client):
