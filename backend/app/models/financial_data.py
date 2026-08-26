@@ -25,6 +25,9 @@ class FinancialData(UUIDPrimaryKey, Timestamped, Base):
     is_submitted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     requires_manual_confirmation: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Reason HQ attached when returning a submission; shown to the subsidiary
+    # and cleared on resubmit / quick-submit.
+    return_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
     ai_anomaly_flags: Mapped[dict | None] = mapped_column(JSONB_VARIANT, nullable=True)
     missing_suggestion: Mapped[dict | None] = mapped_column(JSONB_VARIANT, nullable=True)
 

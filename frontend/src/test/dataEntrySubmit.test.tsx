@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { DataEntryPage } from '../pages/DataEntryPage'
+import { SessionContext } from '../session'
 import { batchSubmitFinancialData, listCompanies, listFinancialData, submitFinancialData } from '../api/endpoints'
 import type { Company, FinancialData } from '../types'
 
@@ -14,7 +15,9 @@ vi.mock('../api/endpoints', () => ({
   quickSubmitFinancialData: vi.fn(),
   createFinancialData: vi.fn(),
   updateFinancialData: vi.fn(),
+  deleteFinancialData: vi.fn(),
   detectAnomalies: vi.fn().mockResolvedValue({ anomalies: [] }),
+  listJurisdictions: vi.fn().mockResolvedValue(['Japan', 'Germany', 'Netherlands', 'United States']),
   suggestMapping: vi.fn(),
   confirmMapping: vi.fn(),
 }))
@@ -41,7 +44,7 @@ beforeEach(() => {
 describe('DataEntryPage batch submit', () => {
   it('submits the whole CSV import with one click', async () => {
     const user = userEvent.setup()
-    render(<MemoryRouter><DataEntryPage /></MemoryRouter>)
+    render(<MemoryRouter><SessionContext.Provider value={{ role: 'subsidiary', entityId: 'ent-1' }}><DataEntryPage /></SessionContext.Provider></MemoryRouter>)
 
     // First draft loads into the form and the batch button reports 3 remaining drafts
     await screen.findByDisplayValue('Japan')
@@ -62,7 +65,7 @@ describe('DataEntryPage batch submit', () => {
       drafts[2],
     ])
     const user = userEvent.setup()
-    render(<MemoryRouter><DataEntryPage /></MemoryRouter>)
+    render(<MemoryRouter><SessionContext.Provider value={{ role: 'subsidiary', entityId: 'ent-1' }}><DataEntryPage /></SessionContext.Provider></MemoryRouter>)
 
     await screen.findByDisplayValue('Germany')
     const submitBtn = await screen.findByRole('button', { name: 'Submit for approval' })

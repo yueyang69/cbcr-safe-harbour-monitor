@@ -21,6 +21,7 @@ from .common import (
     MappingConfirmRequest,
     MappingSuggestion,
     MappingSuggestRequest,
+    ReturnRequest,
     SuggestMissingRequest,
     SuggestMissingResponse,
     TestResultRead,
@@ -33,6 +34,6 @@ __all__ = [
     "BatchUploadResponse", "BriefingResponse", "ChatRequest", "ChatResponse",
     "ColumnMappingInfo", "CompanyCreate", "CompanyRead", "EvaluationRead",
     "FinancialDataCreate", "FinancialDataRead", "MappingConfirmRequest",
-    "MappingSuggestion", "MappingSuggestRequest", "SuggestMissingRequest",
+    "MappingSuggestion", "MappingSuggestRequest", "ReturnRequest", "SuggestMissingRequest",
     "SuggestMissingResponse", "TestResultRead",
 ]

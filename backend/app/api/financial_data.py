@@ -1,6 +1,6 @@
 import csv
 import io
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_session
@@ -15,6 +15,7 @@ from ..schemas import (
     BatchUploadResponse,
     FinancialDataCreate,
     FinancialDataRead,
+    ReturnRequest,
 )
 from ..services.aggregation import rebuild_summaries
 from ..services.column_mapper import map_columns
@@ -75,6 +76,7 @@ async def quick_submit_financial_data(payload: FinancialDataCreate, session: Asy
         data.requires_manual_confirmation = payload.currency != "EUR"
     data.is_submitted = True
     data.is_approved = True
+    data.return_reason = None
     await session.commit()
     await rebuild_summaries(session, payload.fiscal_year)
     await session.refresh(data)
@@ -261,6 +263,8 @@ async def submit_financial_data(data_id: str, session: AsyncSession = Depends(ge
     data = await get_financial_data(session, data_id)
     require_entity_scope(role, entity_id, data.company_id)
     data.is_submitted = True
+    # A resubmission is a fresh review cycle — drop the previous return reason.
+    data.return_reason = None
     await session.commit()
     await session.refresh(data)
     return data
@@ -279,11 +283,15 @@ async def approve_financial_data(data_id: str, session: AsyncSession = Depends(g
 
 
 @router.post("/{data_id}/return", response_model=FinancialDataRead)
-async def return_financial_data(data_id: str, session: AsyncSession = Depends(get_session), _: Role = Depends(require_roles(Role.HQ, Role.ADMIN))):
-    """HQ returns submitted data so the reporting entity can edit it again."""
+async def return_financial_data(data_id: str, session: AsyncSession = Depends(get_session), _: Role = Depends(require_roles(Role.HQ, Role.ADMIN)), return_request: ReturnRequest | None = Body(default=None)):
+    """HQ returns submitted data so the reporting entity can edit it again.
+
+    An optional `reason` is attached so the subsidiary knows why it was sent back.
+    """
     data = await get_financial_data(session, data_id)
     data.is_submitted = False
     data.is_approved = False
+    data.return_reason = return_request.reason if return_request else None
     await session.commit()
     # A returned jurisdiction must leave the Dashboard until it is re-approved.
     await rebuild_summaries(session, data.fiscal_year)

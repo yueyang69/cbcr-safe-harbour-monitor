@@ -2,11 +2,14 @@
 
 Stage 3: a subsidiary may upload multiple jurisdiction rows for the same
 fiscal year, so uniqueness is now (company_id, fiscal_year, jurisdiction).
+
+Renumbered 0004 -> 0005 during the V2.4 merge: origin/main shipped
+0004_return_reason first, so this migration now chains after it.
 """
 from alembic import op
 
-revision = "0004_unique_jurisdiction"
-down_revision = "0003_entity_fields"
+revision = "0005_unique_jurisdiction"
+down_revision = "0004_return_reason"
 branch_labels = None
 depends_on = None
 

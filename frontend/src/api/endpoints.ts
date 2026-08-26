@@ -22,6 +22,18 @@ export async function getDashboard(fiscalYear?: number): Promise<DashboardData> 
   return data
 }
 
+// Demo-level admin login. Returns { role, username } on success.
+export async function login(username: string, password: string): Promise<{ role: string; username: string }> {
+  const { data } = await api.post<{ role: string; username: string }>('/auth/login', { username, password })
+  return data
+}
+
+// Recognised country/region list for the Jurisdiction field (single source of truth on the backend).
+export async function listJurisdictions(): Promise<string[]> {
+  const { data } = await api.get<{ jurisdictions: string[] }>('/jurisdictions')
+  return data.jurisdictions
+}
+
 export async function getSummary(id: string): Promise<JurisdictionSummary> {
   const { data } = await api.get<JurisdictionSummary>(`/summaries/${id}`)
   return data
@@ -87,8 +99,8 @@ export async function approveFinancialData(id: string): Promise<FinancialData> {
   return data
 }
 
-export async function returnFinancialData(id: string): Promise<FinancialData> {
-  const { data } = await api.post<FinancialData>(`/financial-data/${id}/return`)
+export async function returnFinancialData(id: string, reason?: string): Promise<FinancialData> {
+  const { data } = await api.post<FinancialData>(`/financial-data/${id}/return`, { reason: reason || null })
   return data
 }
 
