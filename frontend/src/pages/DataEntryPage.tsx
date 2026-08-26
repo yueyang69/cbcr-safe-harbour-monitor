@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { confirmMapping, createFinancialData, detectAnomalies, listCompanies, listFinancialData, quickSubmitFinancialData, submitFinancialData, suggestMapping, updateFinancialData } from '../api/endpoints'
-import type { AnomalyFlag, Company, FinancialDataInput, MappingSuggestion, UserRole } from '../types'
+import { batchSubmitFinancialData, confirmMapping, createFinancialData, detectAnomalies, listCompanies, listFinancialData, quickSubmitFinancialData, submitFinancialData, suggestMapping, updateFinancialData } from '../api/endpoints'
+import type { AnomalyFlag, Company, FinancialData, FinancialDataInput, MappingSuggestion, UserRole } from '../types'
 
 const fields = ['jurisdiction', 'fiscal_year', 'currency', 'revenue', 'pbt', 'covered_taxes', 'payroll', 'tangible_assets'] as const
 const labels: Record<typeof fields[number], string> = { jurisdiction: 'Jurisdiction', fiscal_year: 'Fiscal year', currency: 'Currency', revenue: 'Revenue', pbt: 'Profit before tax', covered_taxes: 'Covered taxes', payroll: 'Eligible payroll', tangible_assets: 'Eligible tangible assets' }
@@ -18,6 +18,8 @@ export function DataEntryPage() {
   const [detectingAnomalies, setDetectingAnomalies] = useState(false)
   const [savedDraftId, setSavedDraftId] = useState<string | null>(null)
   const [submitted, setSubmitted] = useState(false)
+  const [draftCount, setDraftCount] = useState(0)
+  const [submittingAll, setSubmittingAll] = useState(false)
 
   const userRole = (localStorage.getItem('cbcr-role') || 'hq') as UserRole
   const isSubsidiary = userRole === 'subsidiary'
@@ -42,22 +44,18 @@ export function DataEntryPage() {
       if (target) setForm((current) => ({ ...current, company_id: target.id }))
     }).catch((err: Error) => setError(err.message))
     if (isSubsidiary && entityId) {
-      // Resume the strict flow: restore this entity's draft (editable) and surface a
-      // pending submission, so a re-save never trips the "already exists" 409.
+      // Resume the strict flow: restore this entity's first unsubmitted draft
+      // (editable). `submitted` tracks ONLY the loaded draft — a sibling row
+      // already pending approval must not lock the page (that deadlocked the
+      // whole batch after the first row was submitted).
       listFinancialData().then((rows) => {
-        const pending = rows.find((row) => row.is_submitted && !row.is_approved)
-        if (pending) setSubmitted(true)
-        const draft = rows.find((row) => !row.is_submitted && !row.is_approved)
+        const drafts = rows.filter((row) => !row.is_submitted && !row.is_approved)
+        const draft = drafts[0]
         if (draft) {
-          setSavedDraftId(draft.id)
-          setForm({
-            company_id: draft.company_id, fiscal_year: draft.fiscal_year, jurisdiction: draft.jurisdiction, currency: draft.currency,
-            revenue: draft.revenue === null ? null : Number(draft.revenue),
-            pbt: draft.pbt === null ? null : Number(draft.pbt),
-            covered_taxes: draft.covered_taxes === null ? null : Number(draft.covered_taxes),
-            payroll: draft.payroll === null ? null : Number(draft.payroll),
-            tangible_assets: draft.tangible_assets === null ? null : Number(draft.tangible_assets),
-          })
+          setDraftCount(drafts.filter((row) => row.company_id === draft.company_id && row.fiscal_year === draft.fiscal_year).length)
+          fillFormFromDraft(draft)
+        } else {
+          setDraftCount(0)
         }
       }).catch(() => undefined)
     }
@@ -124,6 +122,19 @@ export function DataEntryPage() {
     }
   }
 
+  const fillFormFromDraft = (draft: FinancialData) => {
+    setSavedDraftId(draft.id)
+    setSubmitted(false)
+    setForm({
+      company_id: draft.company_id, fiscal_year: draft.fiscal_year, jurisdiction: draft.jurisdiction, currency: draft.currency,
+      revenue: draft.revenue === null ? null : Number(draft.revenue),
+      pbt: draft.pbt === null ? null : Number(draft.pbt),
+      covered_taxes: draft.covered_taxes === null ? null : Number(draft.covered_taxes),
+      payroll: draft.payroll === null ? null : Number(draft.payroll),
+      tangible_assets: draft.tangible_assets === null ? null : Number(draft.tangible_assets),
+    })
+  }
+
   const submitForApproval = async () => {
     if (!savedDraftId) return
     setError('')
@@ -134,6 +145,36 @@ export function DataEntryPage() {
       setMessage('Submitted for HQ approval. It appears on the Dashboard once approved.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not submit for approval.')
+    }
+  }
+
+  // Stage 3: one click moves the whole CSV import (all unsubmitted drafts for
+  // this company + fiscal year) into HQ's approval queue.
+  const submitAllDrafts = async () => {
+    if (!form.company_id) return
+    setSubmittingAll(true)
+    setError('')
+    setMessage('')
+    try {
+      const result = await batchSubmitFinancialData(form.company_id, form.fiscal_year)
+      // Refresh the draft list so the batch button and the form reflect what's left.
+      const rows = await listFinancialData()
+      const drafts = rows.filter((row) => !row.is_submitted && !row.is_approved && row.company_id === form.company_id && row.fiscal_year === form.fiscal_year)
+      setDraftCount(drafts.length)
+      const draft = drafts[0]
+      if (draft) {
+        fillFormFromDraft(draft)
+      } else {
+        setSavedDraftId(null)
+        setSubmitted(true)
+      }
+      setMessage(result.submitted_count > 0
+        ? `已提交 ${result.submitted_count} 条数据，等待 HQ 审批。`
+        : '没有待提交的草稿。')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '批量提交失败。')
+    } finally {
+      setSubmittingAll(false)
     }
   }
 
@@ -162,6 +203,13 @@ export function DataEntryPage() {
           )}
         </div>
         {isSubsidiary && submitted && <div className="alert alert-info" role="status">Submitted and awaiting HQ approval. HQ can return it if corrections are needed.</div>}
+        {isSubsidiary && draftCount > 0 && (
+          <div className="form-actions">
+            <button type="button" className="button button-primary" onClick={() => void submitAllDrafts()} disabled={submittingAll} title={`提交本财年全部 ${draftCount} 条草稿到 HQ 审批队列`}>
+              {submittingAll ? '正在提交全部草稿...' : `📤 提交全部 ${draftCount} 条草稿（FY ${form.fiscal_year}）`}
+            </button>
+          </div>
+        )}
         <div className="form-actions"><button className="button button-primary" type="submit" disabled={!form.company_id || submitted}>{isApprover ? 'Save & publish to dashboard' : savedDraftId ? 'Update draft' : 'Save source data'}</button>{isSubsidiary && savedDraftId && !submitted && <button type="button" className="button button-secondary" onClick={() => void submitForApproval()}>Submit for approval</button>}</div></form></article></div>
   </section>
 }

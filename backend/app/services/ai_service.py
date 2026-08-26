@@ -48,11 +48,20 @@ ALIASES = {
     "辖区": ("jurisdiction", 0.95),
     "国家": ("jurisdiction", 0.92),
     "country": ("jurisdiction", 0.96),
+    # 实体/公司名称列在 CbCR 各辖区分行场景中即“行身份”，映射到 jurisdiction
+    # （标准版/中文版/挑战版 demo 依赖这些别名实现自动映射；人工仍可在前端覆盖）
+    "entity_name": ("jurisdiction", 0.98),
+    "公司名称": ("jurisdiction", 0.96),
+    "公司全称": ("jurisdiction", 0.95),
+    "主体名称": ("jurisdiction", 0.95),
+    "实体名称": ("jurisdiction", 0.94),
+    "legal entity name": ("jurisdiction", 0.97),
 
     "报告期": ("fiscal_year", 0.98),
     "fiscal year": ("fiscal_year", 1.0),
     "fiscal_year": ("fiscal_year", 1.0),
     "会计年度": ("fiscal_year", 0.96),
+    "财年": ("fiscal_year", 0.92),
     "年度": ("fiscal_year", 0.90),
     "year": ("fiscal_year", 0.88),
 
@@ -60,16 +69,21 @@ ALIASES = {
     "currency": ("currency", 1.0),
     "币种": ("currency", 0.94),
     "货币": ("currency", 0.92),
+    "本地货币": ("currency", 0.96),
+    "记账本位币": ("currency", 0.97),
+    "local currency": ("currency", 0.98),
 
     "全年营业收入": ("revenue", 0.96),
     "revenue": ("revenue", 1.0),
     "cbcr revenue": ("revenue", 0.98),
     "营业收入": ("revenue", 0.93),
+    "总收入": ("revenue", 0.88),
     "收入": ("revenue", 0.85),
     "销售收入": ("revenue", 0.90),
 
     "税前利润": ("pbt", 0.99),
     "profit before tax": ("pbt", 1.0),
+    "profit_before_tax": ("pbt", 0.98),
     "pbt": ("pbt", 1.0),
     "cbcr pbt": ("pbt", 0.98),
     "利润总额": ("pbt", 0.94),
@@ -79,6 +93,8 @@ ALIASES = {
     "covered taxes": ("covered_taxes", 1.0),
     "covered_taxes": ("covered_taxes", 1.0),
     "simplified covered taxes": ("covered_taxes", 0.98),
+    "已缴税款": ("covered_taxes", 0.92),
+    "已缴公司税": ("covered_taxes", 0.90),
     "所得税": ("covered_taxes", 0.88),
     "税费": ("covered_taxes", 0.80),
 
@@ -87,6 +103,8 @@ ALIASES = {
     "eligible payroll costs": ("payroll", 1.0),
     "payroll": ("payroll", 0.95),
     "员工薪酬": ("payroll", 0.89),
+    "薪酬总额": ("payroll", 0.92),
+    "员工薪酬总额": ("payroll", 0.95),
     "工资": ("payroll", 0.85),
     "人工成本": ("payroll", 0.87),
 

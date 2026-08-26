@@ -82,6 +82,55 @@ async def test_batch_upload_unknown_column_unmapped(client):
     assert mapped["revenue"] == "revenue"
 
 
+async def test_batch_upload_demo_standard_csv_fully_mapped(client):
+    """The plan's standard demo CSV (entity_name + profit_before_tax headers) must auto-map 100%."""
+    company_id = await _make_company(client)
+    csv_text = "entity_name,fiscal_year,currency,revenue,profit_before_tax,covered_taxes,payroll,tangible_assets\nJapan,2026,EUR,8500000,1200000,450000,3200000,15000000\n"
+    response = await _upload(client, csv_text, company_id)
+    assert response.status_code == 200
+    mapped = {col["csv_name"]: col["mapped_field"] for col in response.json()["columns"]}
+    assert mapped["entity_name"] == "jurisdiction"
+    assert mapped["profit_before_tax"] == "pbt"
+    assert mapped["fiscal_year"] == "fiscal_year"
+    assert mapped["tangible_assets"] == "tangible_assets"
+    assert all(col["mapped_field"] for col in response.json()["columns"])
+
+
+async def test_batch_upload_demo_chinese_csv_fully_mapped(client):
+    """The plan's Chinese demo CSV must auto-map 100%."""
+    company_id = await _make_company(client)
+    csv_text = "公司名称,会计年度,币种,营业收入,税前利润,已缴税款,薪酬总额,有形资产\nJapan,2026,EUR,8500000,1200000,450000,3200000,15000000\n"
+    response = await _upload(client, csv_text, company_id)
+    assert response.status_code == 200
+    mapped = {col["csv_name"]: col["mapped_field"] for col in response.json()["columns"]}
+    assert mapped["公司名称"] == "jurisdiction"
+    assert mapped["已缴税款"] == "covered_taxes"
+    assert mapped["薪酬总额"] == "payroll"
+    assert mapped["会计年度"] == "fiscal_year"
+    assert mapped["币种"] == "currency"
+    assert mapped["营业收入"] == "revenue"
+    assert mapped["税前利润"] == "pbt"
+    assert mapped["有形资产"] == "tangible_assets"
+    assert all(col["mapped_field"] for col in response.json()["columns"])
+
+
+async def test_batch_upload_demo_challenge_csv_eight_of_nine(client):
+    """The plan's challenge demo CSV maps 8/9; only 员工人数 requires manual choice."""
+    company_id = await _make_company(client)
+    csv_text = "公司全称,财年,本地货币,总收入,税前利润,已缴公司税,员工薪酬,固定资产,员工人数\nJapan,2026,EUR,8500000,1200000,450000,3200000,15000000,85\n"
+    response = await _upload(client, csv_text, company_id)
+    assert response.status_code == 200
+    mapped = {col["csv_name"]: col["mapped_field"] for col in response.json()["columns"]}
+    assert mapped["公司全称"] == "jurisdiction"
+    assert mapped["财年"] == "fiscal_year"
+    assert mapped["本地货币"] == "currency"
+    assert mapped["总收入"] == "revenue"
+    assert mapped["已缴公司税"] == "covered_taxes"
+    assert mapped["员工薪酬"] == "payroll"
+    assert mapped["固定资产"] == "tangible_assets"
+    assert mapped["员工人数"] is None  # the intended human-intervention column
+
+
 async def test_batch_upload_gbk_encoding_fallback(client):
     company_id = await _make_company(client)
     gbk_bytes = "辖区,币种,营业收入\nJapan,EUR,8500000\n".encode("gbk")
@@ -156,6 +205,94 @@ async def test_batch_commit_non_eur_requires_manual_confirmation(client):
     assert response.status_code == 200
     rows = (await client.get("/api/v1/financial-data", headers={"X-User-Role": "hq"}, params={"company_id": company_id})).json()
     assert rows[0]["requires_manual_confirmation"] is True
+
+
+# --- batch-submit (whole import reaches HQ in one click) ---
+
+async def test_batch_submit_submits_all_drafts(client):
+    company_id = await _make_company(client)
+    headers = {"X-User-Role": "hq"}
+    cc = await client.post("/api/v1/financial-data/batch-commit", headers=headers, json=_commit_payload(company_id, [
+        {"jurisdiction": "Japan", "currency": "EUR", "revenue": "1"},
+        {"jurisdiction": "Germany", "currency": "EUR", "revenue": "2"},
+        {"jurisdiction": "Netherlands", "currency": "EUR", "revenue": "3"},
+    ]))
+    assert cc.status_code == 200
+
+    response = await client.post("/api/v1/financial-data/batch-submit", headers=headers,
+                                 json={"company_id": company_id, "fiscal_year": 2026})
+    assert response.status_code == 200
+    assert response.json()["submitted_count"] == 3
+
+    rows = (await client.get("/api/v1/financial-data", headers=headers, params={"company_id": company_id})).json()
+    assert len(rows) == 3
+    assert all(r["is_submitted"] for r in rows)
+    assert all(not r["is_approved"] for r in rows)
+
+
+async def test_batch_submit_is_idempotent_and_skips_approved(client):
+    company_id = await _make_company(client)
+    headers = {"X-User-Role": "hq"}
+    await client.post("/api/v1/financial-data/batch-commit", headers=headers, json=_commit_payload(company_id, [
+        {"jurisdiction": "Japan", "currency": "EUR", "revenue": "1"},
+    ]))
+    first = await client.post("/api/v1/financial-data/batch-submit", headers=headers,
+                              json={"company_id": company_id, "fiscal_year": 2026})
+    assert first.status_code == 200
+    second = await client.post("/api/v1/financial-data/batch-submit", headers=headers,
+                               json={"company_id": company_id, "fiscal_year": 2026})
+    assert second.json()["submitted_count"] == 0  # nothing left to submit
+    # an approved row is never re-submitted
+    rows = (await client.get("/api/v1/financial-data", headers=headers, params={"company_id": company_id})).json()
+    assert rows[0]["is_approved"] is False
+
+
+async def test_batch_submit_subsidiary_other_company_403(client):
+    a = await _make_company(client, "A Co")
+    b = await _make_company(client, "B Co")
+    response = await client.post("/api/v1/financial-data/batch-submit",
+                                 headers={"X-User-Role": "subsidiary", "X-Entity-Id": a},
+                                 json={"company_id": b, "fiscal_year": 2026})
+    assert response.status_code == 403
+
+
+# --- batch-approve (HQ '批量通过') ---
+
+async def test_batch_approve_approves_whole_pending_queue(client):
+    company_id = await _make_company(client)
+    headers = {"X-User-Role": "hq"}
+    await client.post("/api/v1/financial-data/batch-commit", headers=headers, json=_commit_payload(company_id, [
+        {"jurisdiction": "Japan", "currency": "EUR", "revenue": "1"},
+        {"jurisdiction": "Germany", "currency": "EUR", "revenue": "2"},
+    ]))
+    await client.post("/api/v1/financial-data/batch-submit", headers=headers,
+                      json={"company_id": company_id, "fiscal_year": 2026})
+
+    response = await client.post("/api/v1/financial-data/batch-approve", headers={"X-User-Role": "hq"})
+    assert response.status_code == 200
+    assert response.json()["approved_count"] == 2
+
+    rows = (await client.get("/api/v1/financial-data", headers=headers, params={"company_id": company_id})).json()
+    assert all(r["is_approved"] for r in rows)
+    # the Dashboard was rebuilt so both jurisdictions appear
+    dash = (await client.get("/api/v1/dashboard", headers=headers)).json()
+    assert dash["kpis"]["jurisdiction_count"] == 2
+
+
+async def test_batch_approve_idempotent_and_forbidden_for_subsidiary(client):
+    company_id = await _make_company(client)
+    headers = {"X-User-Role": "hq"}
+    await client.post("/api/v1/financial-data/quick-submit", headers=headers, json={
+        "company_id": company_id, "fiscal_year": 2026, "jurisdiction": "Japan", "currency": "EUR", "revenue": "1",
+    })
+    first = await client.post("/api/v1/financial-data/batch-approve", headers={"X-User-Role": "hq"})
+    assert first.status_code == 200
+    second = await client.post("/api/v1/financial-data/batch-approve", headers={"X-User-Role": "hq"})
+    assert second.json()["approved_count"] == 0
+
+    denied = await client.post("/api/v1/financial-data/batch-approve",
+                               headers={"X-User-Role": "subsidiary", "X-Entity-Id": company_id})
+    assert denied.status_code == 403
 
 
 # --- RBAC ---

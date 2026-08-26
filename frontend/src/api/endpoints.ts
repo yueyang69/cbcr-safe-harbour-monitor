@@ -1,7 +1,9 @@
 import { api } from './client'
 import type {
+  BatchApproveResult,
   BatchCommitResult,
   BatchRowInput,
+  BatchSubmitResult,
   BatchUploadResult,
   Company,
   DashboardData,
@@ -132,5 +134,18 @@ export async function batchUploadCsv(file: File, companyId: string, fiscalYear: 
 
 export async function batchCommitCsv(payload: { company_id: string; fiscal_year: number; rows: BatchRowInput[] }): Promise<BatchCommitResult> {
   const { data } = await api.post<BatchCommitResult>('/financial-data/batch-commit', payload)
+  return data
+}
+
+// Stage 3 — submit every draft for a (company, fiscal_year) in one call so the
+// whole CSV import reaches HQ's approval queue without per-row clicks.
+export async function batchSubmitFinancialData(companyId: string, fiscalYear: number): Promise<BatchSubmitResult> {
+  const { data } = await api.post<BatchSubmitResult>('/financial-data/batch-submit', { company_id: companyId, fiscal_year: fiscalYear })
+  return data
+}
+
+// Stage 3 — HQ approves the whole pending queue in one click ('批量通过').
+export async function batchApproveFinancialData(): Promise<BatchApproveResult> {
+  const { data } = await api.post<BatchApproveResult>('/financial-data/batch-approve')
   return data
 }

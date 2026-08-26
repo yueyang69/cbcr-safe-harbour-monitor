@@ -7,8 +7,11 @@ from ..database import get_session
 from ..dependencies import Role, current_entity, require_entity_scope, require_roles
 from ..models import Company, FinancialData
 from ..schemas import (
+    BatchApproveResponse,
     BatchCommitRequest,
     BatchCommitResponse,
+    BatchSubmitRequest,
+    BatchSubmitResponse,
     BatchUploadResponse,
     FinancialDataCreate,
     FinancialDataRead,
@@ -188,6 +191,55 @@ async def batch_commit(
         ))
     await session.commit()
     return BatchCommitResponse(success_count=len(payload.rows), failed_rows=[])
+
+
+@router.post("/batch-submit", response_model=BatchSubmitResponse)
+async def batch_submit(
+    payload: BatchSubmitRequest,
+    session: AsyncSession = Depends(get_session),
+    role: Role = Depends(require_roles(Role.SUBSIDIARY, Role.HQ, Role.ADMIN)),
+    entity_id: str | None = Depends(current_entity),
+):
+    """Stage 3: submit every DRAFT row for a (company, fiscal_year) in one step.
+
+    Marks is_submitted=True on all currently-unsubmitted rows, so an entire CSV
+    import reaches HQ's approval queue with a single click instead of one
+    draft at a time. Mirrors batch-commit's entity-scope rules; approved rows are
+    left untouched.
+    """
+    require_entity_scope(role, entity_id, payload.company_id)
+    await get_company(session, payload.company_id)
+
+    rows = list((await session.scalars(select(FinancialData).where(
+        FinancialData.company_id == payload.company_id,
+        FinancialData.fiscal_year == payload.fiscal_year,
+        FinancialData.is_submitted.is_(False),
+    ))).all())
+    for row in rows:
+        row.is_submitted = True
+    await session.commit()
+    return BatchSubmitResponse(submitted_count=len(rows))
+
+
+@router.post("/batch-approve", response_model=BatchApproveResponse)
+async def batch_approve(
+    session: AsyncSession = Depends(get_session),
+    _: Role = Depends(require_roles(Role.HQ, Role.ADMIN)),
+):
+    """HQ approves the whole pending queue in one click and rebuilds the
+    jurisdiction cache once, so every approved jurisdiction appears on the
+    Dashboard immediately (the demo's '批量通过')."""
+    rows = list((await session.scalars(select(FinancialData).where(
+        FinancialData.is_submitted.is_(True),
+        FinancialData.is_approved.is_(False),
+    ))).all())
+    for row in rows:
+        row.is_approved = True
+    years = {row.fiscal_year for row in rows}
+    await session.commit()
+    for year in years:
+        await rebuild_summaries(session, year)
+    return BatchApproveResponse(approved_count=len(rows))
 
 
 @router.get("", response_model=list[FinancialDataRead])

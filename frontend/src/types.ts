@@ -150,3 +150,11 @@ export interface BatchCommitResult {
   success_count: number
   failed_rows: { row_index: number; error: string }[]
 }
+
+export interface BatchSubmitResult {
+  submitted_count: number
+}
+
+export interface BatchApproveResult {
+  approved_count: number
+}

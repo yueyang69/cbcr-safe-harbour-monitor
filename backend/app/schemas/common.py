@@ -161,3 +161,16 @@ class BatchCommitRequest(BaseModel):
 class BatchCommitResponse(BaseModel):
     success_count: int
     failed_rows: list[dict]
+
+
+class BatchSubmitRequest(BaseModel):
+    company_id: str
+    fiscal_year: int = Field(ge=2020, le=2100)
+
+
+class BatchSubmitResponse(BaseModel):
+    submitted_count: int
+
+
+class BatchApproveResponse(BaseModel):
+    approved_count: int
